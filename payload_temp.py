@@ -1,34 +1,3 @@
-"""
-payload_temp.py
-================
-DRAFT — owned by B (roles 3 & 4) for now, to unblock codec work on Day 1.
-Send this to A (roles 1 & 2) for a quick review, then freeze the SHAPE
-(field names, function signatures, verdict enum). A builds their real
-bitstream engine + crypto module to match this shape; you then swap this
-file's import for theirs — should be close to a find-and-replace if the
-shape holds.
-
-WHAT'S FAKE / TEMPORARY HERE (A will replace these for real):
-  - sign() / verify()   -> currently HMAC-SHA256 with a hardcoded key.
-                            NOT a real digital signature (no public/private
-                            key pair, no asymmetric crypto). Good enough to
-                            test embed/extract round-trips today.
-  - keygen               -> doesn't exist yet, hence the hardcoded key below.
-
-WHAT'S LIKELY TO SURVIVE INTO THE REAL VERSION AS-IS:
-  - Payload field names (media_id, timestamp, hash, nonce, metadata)
-  - Verdict enum (six states, exact wording matters — it's from the spec)
-  - pack()/unpack() header shape (magic, version, payload_len, sig_len) —
-    A may still adjust the byte sizes, but the concept should hold.
-
-QUESTIONS FOR A'S REVIEW (per the plan — flag these explicitly):
-  1. Does the "hash" field type (hex string vs raw bytes) actually work
-     well for how you're planning to hash?
-  2. Does it make sense to sign the WHOLE serialized payload dict, or
-     should we sign just the hash+nonce? (Affects what verify() checks.)
-  3. Is the start-location field (or lack of one — we're deriving it,
-     not storing it) secure enough for Criterion 1?
-"""
 import hashlib
 import hmac
 import json
