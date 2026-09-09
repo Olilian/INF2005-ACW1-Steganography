@@ -5,7 +5,7 @@ Image and Audio Steganography, Digital Signatures and Security Verification
 
 ```bash
 pip install pillow numpy
-python python tests\test_image_codec.py
+python tests\test_image_codec.py
 ```
 ### For Image
 Produces `cat_cover.png`, `cat_stego.png`, `cat_tampered.png`,
