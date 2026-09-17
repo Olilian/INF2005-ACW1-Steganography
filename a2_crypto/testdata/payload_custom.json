@@ -1,0 +1,21 @@
+{
+  "record_type": "media-release-authorisation",
+  "team": "P1-4",
+  "module": "INF2005 ACW1",
+  "asset": {
+    "title": "Q3 product launch teaser",
+    "classification": "internal-confidential",
+    "licence": "internal-use-only, no redistribution"
+  },
+  "authorised_by": {
+    "role": "media verification officer",
+    "clearance": "level-2"
+  },
+  "release": {
+    "channel": "partner-preview",
+    "not_before": "2026-09-18T00:00:00Z",
+    "expires": "2026-12-31T23:59:59Z"
+  },
+  "handling": "This record is AES-256-GCM encrypted inside the payload, so its contents stay confidential even if the stego file is intercepted and the payload located. The GCM tag protects it from modification; the Ed25519 signature over the surrounding payload proves who issued it.",
+  "revocation_contact": "verification-team@example.edu"
+}

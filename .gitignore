@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+a2_out/
+keys/impostor_*.pem
