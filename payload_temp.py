@@ -2,9 +2,18 @@ import hashlib
 import hmac
 import json
 import os
-import struct
 from datetime import datetime, timezone
 from enum import Enum
+
+from bitstream.bitstream_engine import (
+    MAGIC,
+    VERSION,
+    HEADER_SIZE_BYTES,
+    UnpackError,
+    pack,
+    unpack,
+    required_units,
+)
 
 # ---------------------------------------------------------------------------
 # Verdict enum — six required outcomes (FR10). Wording is from the spec,
@@ -70,61 +79,29 @@ def deserialize_payload(payload_bytes: bytes) -> dict:
 
 # ---------------------------------------------------------------------------
 # Packed blob layout — self-describing header so the codec doesn't need to
-# know payload/signature lengths in advance. This is a draft of what A's
-# real bitstream engine (role 1) will formalize.
+# know payload/signature lengths in advance. MAGIC, VERSION, HEADER_SIZE_BYTES,
+# UnpackError, pack(), unpack(), required_units() now live in
+# bitstream/bitstream_engine.py (Role 1's real module) and are re-exported
+# here so this file stays the single call site the codecs already use.
 # ---------------------------------------------------------------------------
-MAGIC = b"STG0"          # "STG0" = draft/temp version. A's real one may bump to STG1.
-VERSION = 0
-HEADER_SIZE_BYTES = 13   # MAGIC(4) + VERSION(1) + PAYLOAD_LEN(4) + SIG_LEN(4)
-
-
-class UnpackError(ValueError):
-    """Treat as Payload Missing / Wrong Start Location, don't let it crash the app."""
-    pass
-
-
-def pack(payload_bytes: bytes, signature: bytes) -> bytes:
-    header = (
-        MAGIC
-        + struct.pack(">B", VERSION)
-        + struct.pack(">I", len(payload_bytes))
-        + struct.pack(">I", len(signature))
-    )
-    return header + payload_bytes + signature
-
-
-def unpack(blob: bytes) -> tuple:
-    if len(blob) < HEADER_SIZE_BYTES:
-        raise UnpackError("Blob shorter than header size")
-    if blob[:4] != MAGIC:
-        raise UnpackError("Magic bytes mismatch — payload missing or wrong start location")
-    payload_len, sig_len = struct.unpack(">II", blob[5:13])
-    expected_total = HEADER_SIZE_BYTES + payload_len + sig_len
-    if len(blob) < expected_total:
-        raise UnpackError("Blob shorter than header claims")
-    payload_bytes = blob[HEADER_SIZE_BYTES: HEADER_SIZE_BYTES + payload_len]
-    signature = blob[HEADER_SIZE_BYTES + payload_len: expected_total]
-    return payload_bytes, signature
-
-
-def required_units(num_bits: int, bit_depth: int) -> int:
-    return -(-num_bits // bit_depth)  # ceiling division
-
-
 # ---------------------------------------------------------------------------
 # Convenience: build a full ready-to-embed blob in one call, using the fake
 # crypto above. This is the function your image_codec.py should call for now.
 # ---------------------------------------------------------------------------
-def build_protectable_blob(cover_bytes: bytes, media_id: str, metadata: dict) -> tuple:
+def build_protectable_blob(cover_bytes: bytes, media_id: str, metadata: dict, n_lsb: int) -> tuple:
     """
     Returns (blob_bytes, payload_dict) — blob_bytes is what gets embedded,
     payload_dict is what you'll want to log/display/keep for test evidence.
+
+    n_lsb is required now because the header is self-describing (see
+    bitstream_engine.py) — the bit depth used to embed gets recorded in
+    the blob itself.
     """
     cover_hash_hex = hash_bytes(cover_bytes)
     payload = build_payload(media_id, cover_hash_hex, metadata)
     payload_bytes = serialize_payload(payload)
     signature = fake_sign(payload_bytes)
-    blob = pack(payload_bytes, signature)
+    blob = pack(payload_bytes, signature, n_lsb)
     return blob, payload
 
 
@@ -136,7 +113,7 @@ def open_protected_blob(blob: bytes) -> tuple:
     catch Verdict.TAMPERED.
     """
     try:
-        payload_bytes, signature = unpack(blob)
+        payload_bytes, signature, _n_lsb = unpack(blob)
     except UnpackError as exc:
         return Verdict.PAYLOAD_MISSING, None, str(exc)
 

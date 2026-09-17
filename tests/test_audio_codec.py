@@ -125,9 +125,9 @@ def main():
     # "failed-signature... handling" as its own thing to demonstrate.
     SIG_INVALID_PATH = os.path.join(EVIDENCE_DIR, "audio_sig_invalid.wav")
     good_blob = ac.extract_at_offset(stego_arr, START_UNIT, BIT_DEPTH)
-    payload_bytes, signature = pt.unpack(good_blob)
+    payload_bytes, signature, n_lsb = pt.unpack(good_blob)
     corrupted_signature = bytes([signature[0] ^ 0xFF]) + signature[1:]
-    corrupted_blob = pt.pack(payload_bytes, corrupted_signature)
+    corrupted_blob = pt.pack(payload_bytes, corrupted_signature, n_lsb)
 
     fresh_cover_arr, _ = ac.load_audio(COVER_PATH)
     sig_invalid_arr = ac.embed_at_offset(fresh_cover_arr, corrupted_blob, START_UNIT, BIT_DEPTH)

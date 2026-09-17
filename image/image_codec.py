@@ -14,6 +14,7 @@ from PIL import Image
 import numpy as np
 
 import payload_temp as pt
+from bitstream import bitstream_engine as be
 
 # ---------------------------------------------------------------------------
 # PNG read/write
@@ -56,24 +57,14 @@ def capacity_check(arr: np.ndarray, blob: bytes, bit_depth: int) -> dict:
 # embeds/extracts wherever it's told to. Feed it a random int for now to
 # keep testing independent of A's work.
 # ---------------------------------------------------------------------------
-def _bytes_to_bits(data: bytes) -> str:
-    return "".join(f"{b:08b}" for b in data)
-
-
-def _bits_to_bytes(bits: str) -> bytes:
-    return bytes(int(bits[i:i + 8], 2) for i in range(0, len(bits), 8))
-
-
 def embed_at_offset(arr: np.ndarray, blob: bytes, start_unit: int, bit_depth: int) -> np.ndarray:
     """Returns a NEW array — does not mutate the original (need it for before/after)."""
     if not (1 <= bit_depth <= 8):
         raise ValueError("bit_depth must be 1-8")
 
     flat = arr.flatten().copy()
-    bit_string = _bytes_to_bits(blob)
-    pad = (-len(bit_string)) % bit_depth
-    padded = bit_string + ("0" * pad)
-    num_units = len(padded) // bit_depth
+    values = be.bytes_to_unit_values(blob, bit_depth)
+    num_units = len(values)
 
     if start_unit < 0 or start_unit + num_units > flat.size:
         raise ValueError(
@@ -82,10 +73,9 @@ def embed_at_offset(arr: np.ndarray, blob: bytes, start_unit: int, bit_depth: in
         )
 
     mask = np.uint8(0xFF ^ ((1 << bit_depth) - 1))
-    for i in range(num_units):
-        value = np.uint8(int(padded[i * bit_depth:(i + 1) * bit_depth], 2))
+    for i, value in enumerate(values):
         idx = start_unit + i
-        flat[idx] = (flat[idx] & mask) | value
+        flat[idx] = (flat[idx] & mask) | np.uint8(value)
 
     return flat.reshape(arr.shape)
 
@@ -98,8 +88,8 @@ def _extract_header_bytes(arr: np.ndarray, start_unit: int, bit_depth: int) -> b
         raise ValueError("Start location out of range while reading header")
 
     low_mask = (1 << bit_depth) - 1
-    bits = "".join(format(int(flat[start_unit + i]) & low_mask, f"0{bit_depth}b") for i in range(num_units))
-    return _bits_to_bytes(bits[:header_bits_needed])
+    values = [int(flat[start_unit + i]) & low_mask for i in range(num_units)]
+    return be.unit_values_to_bytes(values, bit_depth, total_bytes=pt.HEADER_SIZE_BYTES)
 
 
 def extract_at_offset(arr: np.ndarray, start_unit: int, bit_depth: int) -> bytes:
@@ -114,13 +104,13 @@ def extract_at_offset(arr: np.ndarray, start_unit: int, bit_depth: int) -> bytes
     payload_temp.open_protected_blob().
     """
     header = _extract_header_bytes(arr, start_unit, bit_depth)
-    if len(header) < pt.HEADER_SIZE_BYTES or header[:4] != pt.MAGIC:
+    try:
+        header_info = be.parse_header(header)
+    except be.UnpackError:
         # Return what we have — let open_protected_blob() classify it.
         return header
 
-    import struct
-    payload_len, sig_len = struct.unpack(">II", header[5:13])
-    total_bytes = pt.HEADER_SIZE_BYTES + payload_len + sig_len
+    total_bytes = pt.HEADER_SIZE_BYTES + header_info["payload_len"] + header_info["sig_len"]
     total_bits = total_bytes * 8
     num_units = pt.required_units(total_bits, bit_depth)
 
@@ -129,8 +119,8 @@ def extract_at_offset(arr: np.ndarray, start_unit: int, bit_depth: int) -> bytes
         raise ValueError("Declared payload length exceeds image capacity from this start location")
 
     low_mask = (1 << bit_depth) - 1
-    bits = "".join(format(int(flat[start_unit + i]) & low_mask, f"0{bit_depth}b") for i in range(num_units))
-    return _bits_to_bytes(bits[:total_bits])
+    values = [int(flat[start_unit + i]) & low_mask for i in range(num_units)]
+    return be.unit_values_to_bytes(values, bit_depth, total_bytes=total_bytes)
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +180,7 @@ def protect_image(cover_path: str, output_path: str, media_id: str, metadata: di
     # Hash the cover with the LSB planes we're about to write to already
     # zeroed, so embedding itself doesn't change the hash (see mask_low_bits).
     hashable_bytes = mask_low_bits(arr, bit_depth).tobytes()
-    blob, payload = pt.build_protectable_blob(hashable_bytes, media_id, metadata)
+    blob, payload = pt.build_protectable_blob(hashable_bytes, media_id, metadata, n_lsb=bit_depth)
 
     check = capacity_check(arr, blob, bit_depth)
     if not check["fits"]:
