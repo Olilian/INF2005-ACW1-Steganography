@@ -267,7 +267,7 @@ def _verify_inner(stego, media_id, n_lsb, passphrase, pub, *, codec, bits, algo,
     has_magic = bits.has_magic(header)
     t.add("magic_check", "Magic bytes at derived offset: {}".format(
         "present" if has_magic else "ABSENT"),
-        {"expected": config.MAGIC.decode("latin-1"),
+        {"expected": port_magic(bits).decode("latin-1"),
          "got": header[:4].decode("latin-1", "replace")},
         blob=header, ok=has_magic)
 
@@ -408,7 +408,8 @@ def _locate_failure(samples, secrets, media_id, capacity_units, header_bits,
         )
 
     t0 = time.perf_counter()
-    scan = scan_for_magic(samples, n_lsb, skip_offset=start)
+    scan = scan_for_magic(samples, n_lsb, magic=port_magic(bits),
+                          skip_offset=start)
     t.add("scan", scan.note,
           {"found": scan.found, "offset": scan.offset,
            "ms": round((time.perf_counter() - t0) * 1000, 1)}, ok=False)
@@ -436,6 +437,16 @@ def _locate_failure(samples, secrets, media_id, capacity_units, header_bits,
 
 
 # --- helpers ----------------------------------------------------------------
+def port_magic(bits: Bitstream) -> bytes:
+    """
+    The magic bytes belong to whichever Bitstream implementation is plugged
+    in, not to A2. ReferenceBitstream uses b"INF2"; person 1's engine uses
+    b"STG1". Hardcoding config.MAGIC here would make the bounded scan hunt
+    for the wrong marker and mis-report a relocated payload as missing.
+    """
+    return getattr(bits, "MAGIC", config.MAGIC)
+
+
 def _cannot(t, trace, reason: str) -> Verdict:
     t.fail("verdict", "CANNOT_VERIFY", {"reason": reason})
     return Verdict(VerdictCode.CANNOT_VERIFY, reason, trace=trace)

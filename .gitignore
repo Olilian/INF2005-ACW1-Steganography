@@ -1,4 +1,5 @@
 __pycache__/
 *.pyc
+.DS_Store
 a2_out/
 keys/impostor_*.pem

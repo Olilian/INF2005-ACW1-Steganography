@@ -54,7 +54,18 @@ class A2DebugGUI(tk.Tk):
         self.geometry("1180x820")
 
         # -- shared state ---------------------------------------------------
-        self.bits = ReferenceBitstream()
+        # Prefer person 1's real bitstream engine; fall back to A2's reference
+        # one so this bench still runs if a2_crypto is dropped in on its own.
+        # Note the two use different magic bytes (STG1 vs INF2), so a stego
+        # file written under one will not verify under the other - which is
+        # correct, and is why the bench reports which is active.
+        try:
+            from a2_integration import A1BitstreamAdapter
+            self.bits = A1BitstreamAdapter()
+            self.bits_name = "bitstream_engine (person 1), magic STG1"
+        except Exception:
+            self.bits = ReferenceBitstream()
+            self.bits_name = "ReferenceBitstream (A2 fallback), magic INF2"
         self.mock_codec = MemoryCodec(seed=42)
         self.codec = self.mock_codec          # swapped when a real file loads
         self.cover_view = None                # what protect() embeds into
@@ -69,6 +80,7 @@ class A2DebugGUI(tk.Tk):
         self._ensure_keys()
         self._new_mock_cover()
         self._update_capacity()
+        self.status.set("bitstream: " + self.bits_name)
 
     # =====================================================================
     # layout

@@ -56,9 +56,11 @@ def _load(name: str) -> str:
         return fh.read()
 
 
-def _fresh(seed=42, units=COVER_UNITS):
+def _fresh(bf=ReferenceBitstream, seed=42, units=COVER_UNITS):
+    """bf is the Bitstream factory under test - ReferenceBitstream by default,
+    person 1's engine when a2_integration re-runs this suite against it."""
     codec = MemoryCodec(seed=seed)
-    return codec, ReferenceBitstream(), codec.make_cover(units, seed=seed)
+    return codec, bf(), codec.make_cover(units, seed=seed)
 
 
 def _protect(cover, codec, bits, message, n_lsb=2, priv=None, media_id=MEDIA_ID,
@@ -73,14 +75,15 @@ def _verify(view, codec, bits, pub, n_lsb=2, media_id=MEDIA_ID, passphrase=PASSP
 
 
 # --- the 18 cases -----------------------------------------------------------
-def run(verbose: bool = False) -> Results:
+def run(verbose: bool = False, bits_factory=ReferenceBitstream) -> Results:
+    bf = bits_factory
     r = Results()
     kb = generate_keypair("ed25519")
     short, large = _load("payload_short.txt"), _load("payload_large.txt")
     custom = _load("payload_custom.json")
 
     # 1 - round trip, short message, 1 LSB
-    codec, bits, cover = _fresh()
+    codec, bits, cover = _fresh(bf)
     res = _protect(cover, codec, bits, short, n_lsb=1, priv=kb.private_key)
     v = _verify(res.stego_view, codec, bits, kb.public_key, n_lsb=1)
     r.record(1, "Round-trip short message @ n_lsb=1",
@@ -88,7 +91,7 @@ def run(verbose: bool = False) -> Results:
              "offset {}".format(res.start_unit))
 
     # 2 - round trip, large message, 4 LSB
-    codec, bits, cover = _fresh()
+    codec, bits, cover = _fresh(bf)
     res = _protect(cover, codec, bits, large, n_lsb=4, priv=kb.private_key)
     v = _verify(res.stego_view, codec, bits, kb.public_key, n_lsb=4)
     r.record(2, "Round-trip large message @ n_lsb=4",
@@ -98,7 +101,7 @@ def run(verbose: bool = False) -> Results:
     # 3 - every LSB depth 1..8
     ok_all, notes = True, []
     for n in range(config.MIN_LSB, config.MAX_LSB + 1):
-        codec, bits, cover = _fresh()
+        codec, bits, cover = _fresh(bf)
         res = _protect(cover, codec, bits, short, n_lsb=n, priv=kb.private_key)
         v = _verify(res.stego_view, codec, bits, kb.public_key, n_lsb=n)
         good = v.code is VerdictCode.AUTHENTIC and v.message_text() == short
@@ -107,7 +110,7 @@ def run(verbose: bool = False) -> Results:
     r.record(3, "Round-trip across all n_lsb 1-8", ok_all, " ".join(notes))
 
     # 4 - masking invariance (the core identity)
-    codec, bits, cover = _fresh()
+    codec, bits, cover = _fresh(bf)
     before = stable_digest(codec.read_samples(cover), 3)
     res = _protect(cover, codec, bits, short, n_lsb=3, priv=kb.private_key)
     after = stable_digest(codec.read_samples(res.stego_view), 3)
@@ -123,7 +126,7 @@ def run(verbose: bool = False) -> Results:
              canonical_bytes(p) == canonical_bytes(reordered))
 
     # 6 - flip a high-order content bit -> TAMPERED
-    codec, bits, cover = _fresh()
+    codec, bits, cover = _fresh(bf)
     res = _protect(cover, codec, bits, short, n_lsb=2, priv=kb.private_key)
     sam = bytearray(codec.read_samples(res.stego_view))
     victim = (res.start_unit + 50_000) % len(sam)
@@ -133,7 +136,7 @@ def run(verbose: bool = False) -> Results:
              v.code is VerdictCode.TAMPERED, str(v.code))
 
     # 7 - flip a bit inside the payload region -> SIGNATURE_INVALID
-    codec, bits, cover = _fresh()
+    codec, bits, cover = _fresh(bf)
     res = _protect(cover, codec, bits, short, n_lsb=2, priv=kb.private_key)
     sam = bytearray(codec.read_samples(res.stego_view))
     # a unit well inside the payload body, past the 14-byte header
@@ -143,7 +146,7 @@ def run(verbose: bool = False) -> Results:
              v.code is VerdictCode.SIGNATURE_INVALID, str(v.code))
 
     # 8 - verify under a different public key -> SIGNATURE_INVALID
-    codec, bits, cover = _fresh()
+    codec, bits, cover = _fresh(bf)
     res = _protect(cover, codec, bits, short, n_lsb=2, priv=kb.private_key)
     impostor = generate_keypair("ed25519")
     v = _verify(res.stego_view, codec, bits, impostor.public_key)
@@ -151,7 +154,7 @@ def run(verbose: bool = False) -> Results:
              v.code is VerdictCode.SIGNATURE_INVALID, str(v.code))
 
     # 9 - wrong passphrase -> WRONG_START_LOCATION
-    codec, bits, cover = _fresh()
+    codec, bits, cover = _fresh(bf)
     res = _protect(cover, codec, bits, short, n_lsb=2, priv=kb.private_key)
     v = _verify(res.stego_view, codec, bits, kb.public_key, passphrase="not-the-passphrase")
     r.record(9, "Wrong passphrase -> Wrong Start Location",
@@ -159,7 +162,7 @@ def run(verbose: bool = False) -> Results:
              "found at {}".format(v.details.get("found_at")))
 
     # 10 - wrong n_lsb -> WRONG_START_LOCATION
-    codec, bits, cover = _fresh()
+    codec, bits, cover = _fresh(bf)
     res = _protect(cover, codec, bits, short, n_lsb=2, priv=kb.private_key)
     v = _verify(res.stego_view, codec, bits, kb.public_key, n_lsb=3)
     r.record(10, "Wrong n_lsb -> Wrong Start Location",
@@ -167,7 +170,7 @@ def run(verbose: bool = False) -> Results:
              "correct depth reported: {}".format(v.details.get("correct_n_lsb")))
 
     # 11 - clean cover with no payload -> PAYLOAD_MISSING
-    codec, bits, cover = _fresh()
+    codec, bits, cover = _fresh(bf)
     v = _verify(cover, codec, bits, kb.public_key)
     r.record(11, "Clean cover -> Payload Missing",
              v.code is VerdictCode.PAYLOAD_MISSING, str(v.code))
@@ -185,7 +188,7 @@ def run(verbose: bool = False) -> Results:
              note if raised else "no exception raised")
 
     # 13 - corrupt header -> CANNOT_VERIFY
-    codec, bits, cover = _fresh()
+    codec, bits, cover = _fresh(bf)
     res = _protect(cover, codec, bits, short, n_lsb=2, priv=kb.private_key)
     sam = bytearray(codec.read_samples(res.stego_view))
     # keep the magic intact, but wreck the declared payload length field
@@ -200,7 +203,7 @@ def run(verbose: bool = False) -> Results:
     #      so a wrong passphrase normally fails earlier at the offset. This
     #      case isolates the decryption branch by keeping the location key and
     #      corrupting only the ciphertext's authenticity.
-    codec, bits, cover = _fresh()
+    codec, bits, cover = _fresh(bf)
     v14 = _decryption_failure_case(codec, bits, cover, kb, short)
     r.record(14, "Correct sig + hash, GCM tag fails -> Cannot Verify",
              v14.code is VerdictCode.CANNOT_VERIFY and "decrypt" in str(v14.details),
@@ -224,7 +227,7 @@ def run(verbose: bool = False) -> Results:
 
     # 17 - the whole pipeline under RSA-2048-PSS
     rsa = generate_keypair("rsa2048-pss")
-    codec, bits, cover = _fresh()
+    codec, bits, cover = _fresh(bf)
     res = _protect(cover, codec, bits, short, n_lsb=2, priv=rsa.private_key)
     v_ok = _verify(res.stego_view, codec, bits, rsa.public_key)
     sam = bytearray(codec.read_samples(res.stego_view))
@@ -242,8 +245,8 @@ def run(verbose: bool = False) -> Results:
              "sig {} bytes".format(len(res.signature)))
 
     # 18 - no state leakage between back-to-back verifications
-    codecA, bitsA, coverA = _fresh(seed=1)
-    codecB, bitsB, coverB = _fresh(seed=2)
+    codecA, bitsA, coverA = _fresh(bf, seed=1)
+    codecB, bitsB, coverB = _fresh(bf, seed=2)
     resA = _protect(coverA, codecA, bitsA, short, n_lsb=2, priv=kb.private_key,
                     media_id="IMG-A", passphrase="passphrase-A")
     resB = _protect(coverB, codecB, bitsB, custom, n_lsb=5, priv=kb.private_key,
@@ -299,17 +302,17 @@ def _decryption_failure_case(codec, bits, cover, kb, message):
 
 
 # --- entry point ------------------------------------------------------------
-def main() -> int:
+def main(bits_factory=ReferenceBitstream, label: str = "ReferenceBitstream") -> int:
     print("=" * 72)
     print("a2_crypto selftest - API_VERSION {}, default signer {}".format(
         config.API_VERSION, config.DEFAULT_SIGN_ALGO))
-    print("running against MemoryCodec + ReferenceBitstream (no PNG, no WAV,")
-    print("no teammate code) - this is the plug-and-play acceptance check.")
+    print("running against MemoryCodec + {} (no PNG, no WAV)".format(label))
+    print("this is the plug-and-play acceptance check.")
     print("=" * 72)
 
     t0 = time.perf_counter()
     try:
-        r = run()
+        r = run(bits_factory=bits_factory)
     except Exception:
         traceback.print_exc()
         print("\nSELFTEST ABORTED - an unexpected exception escaped.")

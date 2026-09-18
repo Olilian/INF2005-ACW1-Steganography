@@ -26,7 +26,7 @@ Python 3.10+ (uses `X | Y` type syntax). Tkinter ships with Python on Windows.
 |---|---|---|
 | `python -m a2_crypto.selftest` | 18 internal test cases against the mock codec | `18/18 passed` / `ALL CHECKS PASSED` |
 | `python a2_debug_gui.py` | The A2 debug bench (Protect / Verify / Trace tabs) | A window; no console output |
-| `python a2_integration.py` | Same pipeline over the real PNG **and** WAV | Two `Authentic` round trips, two `Tampered`, two `Wrong Start Location`, then `PURITY PASS` |
+| `python a2_integration.py` | Same pipeline over the real PNG **and** WAV, on person 1's bitstream engine, then re-runs all 18 cases against that engine | Two `Authentic` round trips, two `Tampered`, two `Wrong Start Location`, `18/18 passed`, then `PURITY PASS` |
 
 `a2_integration.py` writes stego files and trace JSON into `a2_out/`, and
 creates `keys/demo_private.pem` + `keys/demo_public.pem` on first run.
@@ -146,6 +146,18 @@ signing and verifying. Every sign and verify routes through one
 of "signature invalid but nothing is wrong" bugs, so it is centralised and
 never inlined.
 
+### Which bitstream is in use
+
+`a2_crypto` ships `ReferenceBitstream` (magic `INF2`) so the layer is testable
+with no teammate code present; `python -m a2_crypto.selftest` uses it. The
+integrated app — `a2_integration.py` and the debug bench — uses person 1's
+`bitstream_engine` (magic `STG1`) through `A1BitstreamAdapter`. Both drive all
+18 cases identically.
+
+The two framings are not interchangeable at the file level: a stego object
+written under one will read as `Payload Missing` under the other, because the
+magic differs. The bench names the active one in its status bar.
+
 ### Ed25519 by default
 
 64-byte signature versus RSA-2048's 256 bytes — at 1 LSB in a small WAV a
@@ -176,7 +188,9 @@ a2_crypto/
 ├── selftest.py     the 18 cases
 └── testdata/       short / large / custom test payloads
 
-a2_integration.py   adapters binding a2_crypto to the real PNG/WAV codecs
+a2_integration.py   adapters binding a2_crypto to the team's real modules:
+                    A1BitstreamAdapter (person 1), ImageCodecAdapter (3),
+                    AudioCodecAdapter (4)
 a2_debug_gui.py     standalone Tkinter bench
 keys/               demo keypair (demo-only, safe to submit per spec)
 ```

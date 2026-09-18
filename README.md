@@ -127,13 +127,16 @@ these changes.
 ## A2 — Crypto & Verdict layer (hashing, signatures, start location, verdicts)
 
 Covers FR3, FR4, FR7, FR9, FR10. Self-contained in `a2_crypto/`; imports
-nothing from the other packages.
+nothing from the other packages. Runs on person 1's bitstream engine through
+`A1BitstreamAdapter`, and on the image and audio codecs through
+`ImageCodecAdapter` / `AudioCodecAdapter` — all in `a2_integration.py`.
 
 ```bash
 pip install cryptography                # a2_crypto's only dependency
 
 python -m a2_crypto.selftest            # 18 internal cases -> "ALL CHECKS PASSED"
-python a2_integration.py                # same pipeline over the real PNG and WAV
+python a2_integration.py                # real PNG + WAV + person 1's bitstream,
+                                        # then re-runs all 18 cases on that engine
 python a2_debug_gui.py                  # Protect / Verify / Trace debug bench
 ```
 

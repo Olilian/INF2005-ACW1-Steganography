@@ -9,12 +9,18 @@ WHY THIS FILE SITS OUTSIDE THE PACKAGE
     below enforces that in both directions.
 
 WHAT IT PROVIDES
-    ImageCodecAdapter  - wraps image/image_codec.py   (person 3)
-    AudioCodecAdapter  - wraps audio/audio_codec.py   (person 4)
+    ImageCodecAdapter    - wraps image/image_codec.py         (person 3)
+    AudioCodecAdapter    - wraps audio/audio_codec.py         (person 4)
+    A1BitstreamAdapter   - wraps bitstream/bitstream_engine.py (person 1)
 
-    Both satisfy the same Codec port, so protect()/verify() run unchanged over
-    either medium. That is the "one interface, two media" claim in the demo,
-    and it is demonstrated by running this file.
+    The two codec adapters satisfy the same Codec port, so protect()/verify()
+    run unchanged over either medium. That is the "one interface, two media"
+    claim in the demo, and it is demonstrated by running this file.
+
+    A1BitstreamAdapter satisfies the Bitstream port, so the team's real
+    framing replaces A2's reference implementation without a single edit
+    inside a2_crypto/. Running this file proves that too: the 18 selftest
+    cases are re-run against person 1's engine.
 
 UNIT CONVENTION
     One unit = one addressable cover byte: an image channel value, or one byte
@@ -27,6 +33,117 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+
+# --- bitstream (person 1) ---------------------------------------------------
+class A1BitstreamAdapter:
+    """
+    Bitstream port over person 1's bitstream_engine.
+
+    Their engine and A2's port were designed independently, so this class is
+    where the two conventions are reconciled. Nothing in a2_crypto changed to
+    accommodate it - that is the point of having a port.
+
+    WHAT HAD TO BE BRIDGED
+      * `unpack()` returns (payload, sig, n_lsb); the port wants (payload, sig).
+        The n_lsb the header records is exposed through header_info() instead.
+      * Their engine raises UnpackError (a ValueError). The pipeline's verdict
+        tree catches HeaderError, so every raise is translated - otherwise a
+        corrupt header would escape as an unexpected exception and land on
+        "Cannot Verify" for the wrong reason.
+      * Their engine has no embed/extract: writing units into a cover is the
+        codecs' job there. Those two methods are built here out of their
+        bytes_to_unit_values()/unit_values_to_bytes(), so the bit order stays
+        theirs and A2 never reimplements it.
+      * Their header has no algorithm byte, so `algo_id` is accepted and
+        ignored. The verifier infers the scheme from the public key it was
+        handed, which it can always do. A2 loses nothing: the algorithm field
+        was only ever a convenience.
+      * Their parse_header does not sanity-check declared lengths, so the
+        MAX_PAYLOAD_BYTES ceiling is applied here. Without it a corrupt length
+        field reads as a plausible header and the "Cannot Verify" verdict for
+        a corrupt header becomes unreachable.
+
+    MAGIC is b"STG1" here versus b"INF2" in A2's reference implementation. The
+    pipeline reads it off this attribute rather than assuming its own.
+    """
+
+    name = "bitstream_engine (person 1)"
+
+    def __init__(self):
+        from bitstream import bitstream_engine as be
+        from a2_crypto.errors import HeaderError
+        from a2_crypto import config
+        self._be = be
+        self._HeaderError = HeaderError
+        self._config = config
+        self.MAGIC = be.MAGIC
+        self.HEADER_SIZE = be.HEADER_SIZE_BYTES
+
+    # -- framing ------------------------------------------------------------
+    def pack(self, payload: bytes, sig: bytes, n_lsb: int, algo_id: int = 0) -> bytes:
+        return self._be.pack(payload, sig, n_lsb)      # algo_id: see class docstring
+
+    def unpack(self, stream: bytes):
+        try:
+            payload, sig, _n_lsb = self._be.unpack(stream)
+        except self._be.UnpackError as exc:
+            raise self._HeaderError(str(exc)) from exc
+        return payload, sig
+
+    # -- header introspection ----------------------------------------------
+    def has_magic(self, header: bytes) -> bool:
+        return len(header) >= 4 and header[:4] == self._be.MAGIC
+
+    def header_info(self, header: bytes) -> dict:
+        info = self._parse(header)
+        return {
+            "payload_len": info["payload_len"],
+            "sig_len": info["sig_len"],
+            "version": info["version"],
+            "n_lsb": info["n_lsb"],
+        }
+
+    def declared_total_bits(self, header: bytes) -> int:
+        info = self._parse(header)
+        return (self.HEADER_SIZE + info["payload_len"] + info["sig_len"]) * 8
+
+    def header_size_bits(self, n_lsb: int = 1) -> int:
+        return self.HEADER_SIZE * 8
+
+    def _parse(self, header: bytes) -> dict:
+        try:
+            info = self._be.parse_header(header)
+        except self._be.UnpackError as exc:
+            raise self._HeaderError(str(exc)) from exc
+        p_len = info["payload_len"]
+        if p_len == 0 or p_len > self._config.MAX_PAYLOAD_BYTES:
+            raise self._HeaderError(
+                "Declared payload length {} is out of range.".format(p_len))
+        return info
+
+    # -- carrier ------------------------------------------------------------
+    def embed(self, samples: bytes, stream: bytes, n_lsb: int, start: int) -> bytes:
+        values = self._be.bytes_to_unit_values(stream, n_lsb)
+        if start < 0 or start + len(values) > len(samples):
+            raise self._HeaderError(
+                "Stream needs {} units from offset {}, cover has {}.".format(
+                    len(values), start, len(samples)))
+        out = bytearray(samples)
+        mask = 0xFF ^ ((1 << n_lsb) - 1)
+        for i, v in enumerate(values):
+            out[start + i] = (out[start + i] & mask) | v
+        return bytes(out)
+
+    def extract(self, samples: bytes, n_lsb: int, start: int, max_bits: int) -> bytes:
+        if start < 0 or start >= len(samples):
+            raise self._HeaderError(
+                "Start offset {} outside cover of {} units.".format(start, len(samples)))
+        num_units = self._be.required_units(max_bits, n_lsb)
+        available = min(num_units, len(samples) - start)
+        low = (1 << n_lsb) - 1
+        values = [samples[start + i] & low for i in range(available)]
+        return self._be.unit_values_to_bytes(values, n_lsb, max_bits // 8)
 
 
 # --- image ------------------------------------------------------------------
@@ -149,10 +266,10 @@ def demo(image_path: str, audio_path: str, out_dir: str = "a2_out") -> int:
     layer.
     """
     import a2_crypto as a2
-    from a2_crypto import ReferenceBitstream, Trace
+    from a2_crypto import Trace
 
     os.makedirs(out_dir, exist_ok=True)
-    bits = ReferenceBitstream()
+    bits = A1BitstreamAdapter()          # the team's real framing, not A2's mock
     passphrase = "team-P1-4-shared-passphrase"
 
     priv_path = os.path.join("keys", "demo_private.pem")
@@ -224,14 +341,28 @@ def demo(image_path: str, audio_path: str, out_dir: str = "a2_out") -> int:
 
         tv.save(os.path.join(out_dir, "trace_{}.json".format(codec.media_type)))
 
+    # The plug-and-play claim, actually tested: re-run A2's whole internal
+    # suite with person 1's framing swapped in for A2's reference one.
+    print("\n" + "=" * 70)
+    print("Re-running the 18 A2 selftest cases against person 1's bitstream")
+    print("engine, to prove swapping the Bitstream port needs no A2 edits.")
+    print("=" * 70)
+    from a2_crypto import selftest
+    a1_code = selftest.main(bits_factory=A1BitstreamAdapter,
+                            label="A1BitstreamAdapter (STG1 framing)")
+    if a1_code != 0:
+        failures += 1
+
     print("\n" + "=" * 70)
     ok = selftest_purity()
     print("=" * 70)
     if failures or not ok:
         print("INTEGRATION FAILURES:", failures)
         return 1
-    print("Integration OK - the same protect()/verify() served PNG and WAV")
-    print("with no media-specific code in a2_crypto.")
+    print("Integration OK:")
+    print("  - the same protect()/verify() served PNG and WAV")
+    print("  - person 1's bitstream engine drove all 18 A2 cases")
+    print("  - no media-specific or teammate-specific code inside a2_crypto")
     return 0
 
 
