@@ -1,0 +1,1 @@
+Use digital signatures to verify that a payload or file record was issued by a legitimate signer and has not been altered.
