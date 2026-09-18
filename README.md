@@ -3,14 +3,15 @@ Image and Audio Steganography, Digital Signatures and Security Verification
 
 ## To Run it
 
-```bash
-pip install pillow numpy
+pip install pillow numpy cryptography
+
 python tests\test_image_codec.py
-```
+
 ### For Image
-Produces `cat_cover.png`, `cat_stego.png`, `cat_tampered.png`,
-`cat_diff.png` in this folder so you can see the LSB changes are
-invisible until amplified.
+Produces image_stego.png, image_diff.png, image_tampered.png, and a
+full LSB-depth sweep (image_stego_lsb1.png ... lsb8.png, image_diff_lsb1.png
+... lsb8.png) under tests/test_evidence/image/, demonstrating the payload
+is recoverable and imperceptible across all 8 selectable bit depths.
 
 > To be deleted for final submission
 # Bitstream Engine

@@ -1,0 +1,129 @@
+{
+  "name": "image_verify",
+  "steps": [
+    {
+      "stage": "capacity",
+      "label": "Stego capacity measured",
+      "detail": {
+        "units": 405900,
+        "capacity_bits": 811800,
+        "n_lsb": 2
+      },
+      "ok": true,
+      "ms": 16.712
+    },
+    {
+      "stage": "derive_secrets",
+      "label": "HKDF re-derived location and message keys from passphrase",
+      "detail": {},
+      "ok": true,
+      "ms": 0.118
+    },
+    {
+      "stage": "derive_start",
+      "label": "Start offset re-derived - no stored hint was read",
+      "detail": {
+        "start_unit": 253115,
+        "media_id": "IMG-TEST-001",
+        "n_lsb": 2
+      },
+      "ok": true,
+      "ms": 0.069
+    },
+    {
+      "stage": "magic_check",
+      "label": "Magic bytes at derived offset: present",
+      "detail": {
+        "expected": "STG1",
+        "got": "STG1"
+      },
+      "ok": true,
+      "ms": 0.074,
+      "blob_len": 14,
+      "blob_hex": "5354473101020000020e00000040",
+      "blob_truncated": false
+    },
+    {
+      "stage": "header",
+      "label": "Header parsed",
+      "detail": {
+        "payload_len": 526,
+        "sig_len": 64,
+        "version": 1,
+        "n_lsb": 2
+      },
+      "ok": true,
+      "ms": 0.018
+    },
+    {
+      "stage": "extract_body",
+      "label": "Payload and signature extracted",
+      "detail": {
+        "payload_bytes": 526,
+        "sig_bytes": 64
+      },
+      "ok": true,
+      "ms": 1.82,
+      "blob_len": 96,
+      "blob_hex": "7b22636f7665725f68617368223a2233373638336537646235623738623933383066356338323265613662666337326533353338326664333539346539343930393631353633376134313333376536222c22656e63223a226165732d3235362d",
+      "blob_truncated": false
+    },
+    {
+      "stage": "verify_sig",
+      "label": "Signature VALID",
+      "detail": {
+        "algo": "ed25519",
+        "public_fingerprint": "96e408b3103196f0"
+      },
+      "ok": true,
+      "ms": 0.291,
+      "blob_len": 32,
+      "blob_hex": "4ba622ecc5ea723786614fc87b255127adcf34e25a71b8d1bb6d44c4854fe2d5",
+      "blob_truncated": false
+    },
+    {
+      "stage": "unpack",
+      "label": "Payload record parsed",
+      "detail": {
+        "media_id": "IMG-TEST-001",
+        "ts": "2026-09-18T08:18:52Z",
+        "enc": "aes-256-gcm",
+        "n_lsb": 2
+      },
+      "ok": true,
+      "ms": 0.06
+    },
+    {
+      "stage": "compare_hash",
+      "label": "Cover hash matches",
+      "detail": {
+        "expected": "37683e7db5b78b9380f5c822ea6bfc72...",
+        "recomputed": "37683e7db5b78b9380f5c822ea6bfc72...",
+        "hashed_bits_per_byte": 6
+      },
+      "ok": true,
+      "ms": 1.36
+    },
+    {
+      "stage": "decrypt",
+      "label": "Hidden message decrypted",
+      "detail": {
+        "enc": "aes-256-gcm",
+        "message_bytes": 105
+      },
+      "ok": true,
+      "ms": 0.106
+    },
+    {
+      "stage": "verdict",
+      "label": "AUTHENTIC",
+      "detail": {
+        "start_unit": 253115,
+        "algo": "ed25519"
+      },
+      "ok": true,
+      "ms": 0.003
+    }
+  ],
+  "total_ms": 20.631
+}

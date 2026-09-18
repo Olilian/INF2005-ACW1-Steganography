@@ -1,0 +1,134 @@
+{
+  "name": "image_protect",
+  "steps": [
+    {
+      "stage": "capacity",
+      "label": "Cover capacity measured",
+      "detail": {
+        "units": 405900,
+        "capacity_bits": 811800,
+        "n_lsb": 2,
+        "usable_bits": 262144
+      },
+      "ok": true,
+      "ms": 0.057
+    },
+    {
+      "stage": "hash",
+      "label": "Stable digest over LSB-masked cover",
+      "detail": {
+        "algo": "sha256",
+        "n_lsb": 2,
+        "bits_hashed_per_byte": 6
+      },
+      "ok": true,
+      "ms": 1.827,
+      "blob_len": 32,
+      "blob_hex": "37683e7db5b78b9380f5c822ea6bfc72e35382fd3594e94909615637a41337e6",
+      "blob_truncated": false
+    },
+    {
+      "stage": "derive_secrets",
+      "label": "HKDF split passphrase into location and message keys",
+      "detail": {
+        "salt": "INF2005-ACW1",
+        "labels": [
+          "start-location",
+          "payload-encryption"
+        ]
+      },
+      "ok": true,
+      "ms": 0.259
+    },
+    {
+      "stage": "payload",
+      "label": "Verification payload built",
+      "detail": {
+        "media_id": "IMG-TEST-001",
+        "media_type": "image",
+        "ts": "2026-09-18T08:18:52Z",
+        "nonce": "1e08ec6a95ed4a2391a3296d",
+        "enc": "aes-256-gcm",
+        "message_bytes": 105
+      },
+      "ok": true,
+      "ms": 1.274
+    },
+    {
+      "stage": "canonical",
+      "label": "Canonical JSON serialised for signing",
+      "detail": {
+        "bytes": 526,
+        "rule": "sort_keys, no whitespace, ASCII-escaped"
+      },
+      "ok": true,
+      "ms": 0.076,
+      "blob_len": 526,
+      "blob_hex": "7b22636f7665725f68617368223a2233373638336537646235623738623933383066356338323265613662666337326533353338326664333539346539343930393631353633376134313333376536222c22656e63223a226165732d3235362d67636d222c226d656469615f6964223a22494d472d544553542d303031222c22",
+      "blob_truncated": true
+    },
+    {
+      "stage": "sign",
+      "label": "Payload signed",
+      "detail": {
+        "algo": "ed25519",
+        "sig_bytes": 64
+      },
+      "ok": true,
+      "ms": 0.387,
+      "blob_len": 64,
+      "blob_hex": "4ba622ecc5ea723786614fc87b255127adcf34e25a71b8d1bb6d44c4854fe2d52bfced1aa6902e4b79acc9d698e041baf3ac78f87beacc3da67c63ee86974b08",
+      "blob_truncated": false
+    },
+    {
+      "stage": "derive_start",
+      "label": "Start offset derived from passphrase (not stored)",
+      "detail": {
+        "start_unit": 253115,
+        "capacity_units": 405900,
+        "needed_units": 2416,
+        "placement_window": 274828,
+        "reserved_tail": 131072,
+        "position_percent": 62.359,
+        "brute_force_positions": 274828
+      },
+      "ok": true,
+      "ms": 0.131
+    },
+    {
+      "stage": "pack",
+      "label": "Header + payload + signature framed",
+      "detail": {
+        "stream_bytes": 604,
+        "header_bytes": 14
+      },
+      "ok": true,
+      "ms": 0.008,
+      "blob_len": 64,
+      "blob_hex": "5354473101020000020e000000407b22636f7665725f68617368223a223337363833653764623562373862393338306635633832326561366266633732653335",
+      "blob_truncated": false
+    },
+    {
+      "stage": "embed",
+      "label": "Stream written into the LSB planes",
+      "detail": {
+        "start_unit": 253115,
+        "units_written": 2416,
+        "bytes_changed": 1794,
+        "percent_of_cover": 0.442
+      },
+      "ok": true,
+      "ms": 20.788
+    },
+    {
+      "stage": "verify_invariant",
+      "label": "Stable digest unchanged by embedding",
+      "detail": {
+        "match": true
+      },
+      "ok": true,
+      "ms": 1.403
+    }
+  ],
+  "total_ms": 26.212
+}
