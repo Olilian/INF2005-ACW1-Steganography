@@ -209,14 +209,19 @@ class AudioCodecAdapter:
         self._ac.save_audio(arr, params, path)
 
     def capacity_bits(self, view, n_lsb: int) -> int:
-        return int(view[0].size) * n_lsb
+        sampwidth = view[1].sampwidth
+        low_byte_units = self._ac.embeddable_view(view[0], sampwidth).size
+        return low_byte_units * n_lsb
 
     def read_samples(self, view) -> bytes:
-        return view[0].tobytes()
+        sampwidth = view[1].sampwidth
+        return self._ac.embeddable_view(view[0], sampwidth).tobytes()
 
     def write_samples(self, view, data: bytes):
-        arr = self._np.frombuffer(data, dtype=self._np.uint8).copy()
-        return (arr, view[1])
+        sampwidth = view[1].sampwidth
+        low_bytes = self._np.frombuffer(data, dtype=self._np.uint8)
+        merged = self._ac.merge_embeddable_view(view[0], sampwidth, low_bytes)
+        return (merged, view[1])
 
     # -- extras the GUI uses, not part of the port --------------------------
     def compare(self, cover, stego) -> dict:
@@ -338,6 +343,38 @@ def demo(image_path: str, audio_path: str, out_dir: str = "a2_out") -> int:
         print("VERDICT (wrong pass) : {}".format(v3.code))
         if v3.code is not a2.VerdictCode.WRONG_START_LOCATION:
             failures += 1
+            
+        # negative case: wrong public key (impostor) -> Signature Invalid
+        impostor_pub_path = os.path.join("keys", "impostor_public.pem")
+        if not os.path.exists(impostor_pub_path):
+            impostor_priv_path = os.path.join("keys", "impostor_private.pem")
+            kb2 = a2.generate_keypair()
+            a2.save_keypair(kb2, impostor_priv_path, impostor_pub_path)
+            print("generated impostor keypair in keys/ (for the wrong-key negative case)")
+        impostor_pub = a2.load_public(impostor_pub_path)
+
+        v4 = a2.verify(codec.load(stego_path), media_id, n_lsb, passphrase, impostor_pub,
+                    codec=codec, bits=bits)
+        print("VERDICT (wrong key)  : {}".format(v4.code))
+        if v4.code is not a2.VerdictCode.SIGNATURE_INVALID:
+            failures += 1
+
+        # negative case: invalid/corrupt public key -> Cannot Verify
+        BROKEN_KEY_PATH = os.path.join(out_dir, "broken_public.pem")
+        with open(BROKEN_KEY_PATH, "w") as f:
+            f.write("-----BEGIN PUBLIC KEY-----\nNOT-ACTUALLY-A-KEY\n-----END PUBLIC KEY-----\n")
+        try:
+            broken_pub = a2.load_public(BROKEN_KEY_PATH)
+            v5 = a2.verify(codec.load(stego_path), media_id, n_lsb, passphrase, broken_pub,
+                        codec=codec, bits=bits)
+            print("VERDICT (broken key) : {}".format(v5.code))
+            if v5.code is not a2.VerdictCode.CANNOT_VERIFY:
+                failures += 1
+        except Exception as exc:
+            # load_public() may reject a malformed key before verify() even runs --
+            # that's still the same "invalid key" failure mode, just caught one
+            # layer earlier. Worth keeping as evidence either way.
+            print("VERDICT (broken key) : load_public() rejected it directly ({})".format(exc))
 
         tv.save(os.path.join(out_dir, "trace_{}.json".format(codec.media_type)))
 

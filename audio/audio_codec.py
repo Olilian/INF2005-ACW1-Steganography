@@ -44,6 +44,35 @@ def save_audio(arr: np.ndarray, params: AudioParams, path: str) -> None:
         wf.writeframes(arr.tobytes())
 
 
+# which raw bytes are safe to carry LSB changes
+def embeddable_view(arr: np.ndarray, sampwidth: int) -> np.ndarray:
+    """
+    The subset of raw PCM bytes safe to embed into: the low byte of each
+    sample. For 8-bit PCM every byte already IS a full sample (no separate
+    high byte), so this returns everything. For 16/24/32-bit PCM, only the
+    least-significant byte of each sample is included — flipping LSBs in
+    a HIGH byte moves the sample value by up to (2**bit_depth - 1) * 256,
+    an audible jump, instead of an inaudible rounding change.
+
+    WAV PCM is little-endian, so the low byte of each sample is the FIRST
+    byte of every sampwidth-byte group: indices 0, sampwidth, 2*sampwidth, ...
+    """
+    if sampwidth <= 0:
+        raise ValueError("sample width must be positive")
+    return arr[::sampwidth].copy()
+
+
+def merge_embeddable_view(arr: np.ndarray, sampwidth: int, low_bytes: np.ndarray) -> np.ndarray:
+    """
+    Inverse of embeddable_view(): writes low_bytes back into their original
+    stride positions in a full-length copy of arr, leaving every other byte
+    (the high bytes of multi-byte samples) exactly as they were.
+    """
+    out = arr.copy()
+    out[::sampwidth] = low_bytes
+    return out
+
+
 # capacity check (mandatory "payload bigger than cover?" test case)
 def capacity_units(arr: np.ndarray) -> int:
     return int(arr.size)
@@ -172,15 +201,25 @@ def samples_for_waveform(arr: np.ndarray, params: AudioParams) -> np.ndarray:
 def protect_audio(cover_path: str, output_path: str, media_id: str, metadata: dict,
                    bit_depth: int, start_unit: int) -> dict:
     arr, params = load_audio(cover_path)
-    # hash cover with the LSB planes we're about to write already zeroed
-    hashable_bytes = mask_low_bits(arr, bit_depth).tobytes()
+    low_bytes = embeddable_view(arr, params.sampwidth)
+
+    # Hash the FULL cover, with only the LOW bytes' about-to-be-written LSBs
+    # zeroed. High bytes are never touched by embedding, so they stay fully
+    # significant in the hash — tampering there is still caught. Masking
+    # only the low-byte plane (not the whole array like before) is what
+    # keeps this fix from silently weakening tamper detection.
+    masked_low = mask_low_bits(low_bytes, bit_depth)
+    hashable_arr = merge_embeddable_view(arr, params.sampwidth, masked_low)
+    hashable_bytes = hashable_arr.tobytes()
+
     blob, payload = pt.build_protectable_blob(hashable_bytes, media_id, metadata, n_lsb=bit_depth)
 
-    check = capacity_check(arr, blob, bit_depth)
+    check = capacity_check(low_bytes, blob, bit_depth)
     if not check["fits"]:
         raise ValueError(f"Payload too large for cover at this bit depth: {check}")
 
-    stego_arr = embed_at_offset(arr, blob, start_unit, bit_depth)
+    embedded_low = embed_at_offset(low_bytes, blob, start_unit, bit_depth)
+    stego_arr = merge_embeddable_view(arr, params.sampwidth, embedded_low)
     save_audio(stego_arr, params, output_path)
 
     return {"payload": payload, "capacity_check": check, "start_unit": start_unit, "output_path": output_path}
@@ -188,8 +227,9 @@ def protect_audio(cover_path: str, output_path: str, media_id: str, metadata: di
 
 def verify_audio(stego_path: str, bit_depth: int, start_unit: int) -> dict:
     arr, params = load_audio(stego_path)
+    low_bytes = embeddable_view(arr, params.sampwidth)
     try:
-        blob = extract_at_offset(arr, start_unit, bit_depth)
+        blob = extract_at_offset(low_bytes, start_unit, bit_depth)
     except ValueError as exc:
         return {"verdict": pt.Verdict.WRONG_START_LOCATION, "payload": None, "detail": str(exc)}
 
@@ -197,9 +237,12 @@ def verify_audio(stego_path: str, bit_depth: int, start_unit: int) -> dict:
     if verdict != pt.Verdict.AUTHENTIC or payload is None:
         return {"verdict": verdict, "payload": payload, "detail": detail}
 
-    # signature ok, now check hash to catch tampering
-    # mask same LSB planes encoder ignored so embedding itself isn't flagged
-    current_hash = pt.hash_bytes(mask_low_bits(arr, bit_depth).tobytes())
+    # signature ok, now check hash to catch tampering — same full-cover,
+    # low-byte-only masking scheme as protect_audio() above, so genuine
+    # tampering anywhere (high byte or low byte) still flips the hash.
+    masked_low = mask_low_bits(low_bytes, bit_depth)
+    hashable_arr = merge_embeddable_view(arr, params.sampwidth, masked_low)
+    current_hash = pt.hash_bytes(hashable_arr.tobytes())
     embedded_hash = payload["hash"].split("sha256:")[-1]
     if current_hash != embedded_hash:
         return {"verdict": pt.Verdict.TAMPERED, "payload": payload,

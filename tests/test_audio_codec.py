@@ -123,15 +123,25 @@ def main():
     # rather than Verdict.TAMPERED — these are different failure paths in
     # payload_temp.open_protected_blob() and the rubric calls out
     # "failed-signature... handling" as its own thing to demonstrate.
+    #
+    # NOTE: embedding now only touches the LOW byte of each sample (see the
+    # audio_codec.py fix), so reading/writing the blob here must go through
+    # embeddable_view()/merge_embeddable_view() instead of the raw full
+    # array — extract_at_offset() expects the low-byte-only view, not the
+    # full interleaved byte stream.
     SIG_INVALID_PATH = os.path.join(EVIDENCE_DIR, "audio_sig_invalid.wav")
-    good_blob = ac.extract_at_offset(stego_arr, START_UNIT, BIT_DEPTH)
+
+    low_bytes = ac.embeddable_view(stego_arr, stego_params.sampwidth)
+    good_blob = ac.extract_at_offset(low_bytes, START_UNIT, BIT_DEPTH)
     payload_bytes, signature, n_lsb = pt.unpack(good_blob)
     corrupted_signature = bytes([signature[0] ^ 0xFF]) + signature[1:]
     corrupted_blob = pt.pack(payload_bytes, corrupted_signature, n_lsb)
 
-    fresh_cover_arr, _ = ac.load_audio(COVER_PATH)
-    sig_invalid_arr = ac.embed_at_offset(fresh_cover_arr, corrupted_blob, START_UNIT, BIT_DEPTH)
-    ac.save_audio(sig_invalid_arr, cover_params, SIG_INVALID_PATH)
+    fresh_cover_arr, fresh_cover_params = ac.load_audio(COVER_PATH)
+    fresh_low = ac.embeddable_view(fresh_cover_arr, fresh_cover_params.sampwidth)
+    embedded_low = ac.embed_at_offset(fresh_low, corrupted_blob, START_UNIT, BIT_DEPTH)
+    sig_invalid_arr = ac.merge_embeddable_view(fresh_cover_arr, fresh_cover_params.sampwidth, embedded_low)
+    ac.save_audio(sig_invalid_arr, fresh_cover_params, SIG_INVALID_PATH)
 
     sig_result = ac.verify_audio(SIG_INVALID_PATH, bit_depth=BIT_DEPTH, start_unit=START_UNIT)
     print("Verdict:", sig_result["verdict"], "-", sig_result["detail"])
