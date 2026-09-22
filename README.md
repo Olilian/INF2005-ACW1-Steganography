@@ -3,7 +3,38 @@ Image and Audio Steganography, Digital Signatures and Security Verification
 
 ## To Run it
 
-pip install pillow numpy cryptography
+pip install pillow numpy cryptography sounddevice
+
+python gui_app.py
+
+### GUI (person 5)
+
+`python gui_app.py` is the production GUI (Tkinter, stdlib). It has four tabs:
+
+1. **Protect** - load a PNG/WAV cover, pick a message preset (short/large/custom/
+   oversized/free), choose LSB depth (1-8), media ID, passphrase and signature
+   algorithm, watch the live capacity bar, then embed. Shows a before/after
+   comparison (image diff, or audio waveform + playback).
+2. **Verify** - load a stego file (or pull the last Protect result straight
+   across), supply the same media ID/passphrase/LSB/public key, and get a
+   colour-coded verdict with the recovered message and payload record.
+3. **Party A -> B demo** - the mandatory "email a stego file, recipient
+   downloads and verifies" case. Party A protects and "sends" into
+   `gui_out/party_a_sent/`; Party B checks that inbox, downloads a copy into
+   `gui_out/party_b_downloads/`, and verifies using only what A tells them
+   out of band (media ID, passphrase, LSB count, public key).
+4. **Attack simulation** - takes the last Protect result and applies one
+   attack at a time (content tamper, payload tamper, wrong passphrase, wrong
+   key, wrong LSB, clean cover, corrupt header), re-verifies after each, and
+   logs expected-vs-actual verdict - the required negative cases, on demand.
+
+`sounddevice` is optional: without it the app still runs, just with audio
+Play/Stop buttons disabled. (An earlier version used `simpleaudio`, which
+segfaults the whole app on Apple Silicon macOS when a clip finishes playing
+naturally - switched to `sounddevice`, which doesn't.)
+
+`a2_debug_gui.py` is a separate, earlier developer test bench for exercising
+the crypto layer directly - not the GUI the spec asks for.
 
 python tests\test_image_codec.py
 

@@ -182,29 +182,30 @@ genuinely inaudible.
 This does not affect A2. The stable digest, the derived offsets and every
 verdict work the same either way; only audio quality changes.
 
-### b. `payload_temp.py`'s fake crypto can now be retired
+### b. `payload_temp.py`'s fake crypto — RESOLVED, retired
 
-`image_codec.py` and `audio_codec.py` still import `payload_temp`, whose
-`fake_sign`/`fake_verify` are HMAC — symmetric, so the same key signs and
-verifies. That is not a digital signature and would not satisfy FR4.
+Was: `audio_codec.py` still imported `payload_temp`, whose `fake_sign`/
+`fake_verify` are HMAC — symmetric, so the same key signs and verifies. That
+is not a digital signature and would not satisfy FR4. (`image_codec.py` had
+already been cleaned up before this was written.)
 
-(Person 1 already moved the *framing* half of `payload_temp` into
-`bitstream_engine`; what is left to replace is the crypto half.)
+Done: `audio_codec.py`'s `protect_audio`/`verify_audio` wrappers, and the
+functions that existed only to support them (`capacity_check`,
+`capacity_units`, `embed_at_offset`, `_extract_header_bytes`,
+`extract_at_offset`, `mask_low_bits`), are removed — all superseded by
+`a2_crypto.protect()`/`verify()` through `a2_integration.AudioCodecAdapter` +
+`A1BitstreamAdapter`, same as the image path. `audio_codec.py` now matches
+`image_codec.py`'s shape: just I/O + before/after comparison
+(`load_audio`/`save_audio`/`embeddable_view`/`merge_embeddable_view`/
+`compare_audio`/`samples_for_waveform`), no crypto, no framing.
 
-`a2_crypto` replaces all of it: `hash_bytes` → `stable_digest`,
-`build_protectable_blob` → `protect()`, `open_protected_blob` → `verify()`,
-`Verdict` → `a2_crypto.VerdictCode` (same six strings, so display code does
-not change). The `protect_image`/`verify_image` and `protect_audio`/
-`verify_audio` wrappers at the bottom of each codec are superseded by
-`a2_integration.py`; the read/write/embed/extract/compare functions above them
-are still used and unchanged.
-
-Person 1's bitstream has landed, so the remaining order is: switch the
-codecs' `protect_*`/`verify_*` wrappers over to `a2_integration`, then delete
-the crypto half of `payload_temp.py` in one commit. The framing names it
-re-exports (`MAGIC`, `pack`, `unpack`, `required_units`) are still used by the
-codecs, so either keep it as the re-export shim or repoint those imports at
-`bitstream_engine` directly.
+`payload_temp.py` is deleted — nothing imports it any more.
+`tests/test_audio_codec.py` was migrated to the real pipeline (mirroring how
+`tests/test_image_codec.py` already worked), and the GUI's Protect/Verify/
+Exchange/Attack tabs were re-verified end to end on both PNG and WAV covers
+after the change (all four tabs already went through `a2_integration`
+adapters, not through the retired wrappers, so this was a pure code-quality
+cleanup, not a behaviour change).
 
 ---
 

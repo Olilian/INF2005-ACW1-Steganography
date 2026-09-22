@@ -1,18 +1,13 @@
 """
-audio_codec.py - audio codec (role 4)
+audio_codec.py - WAV/PCM I/O and before/after comparison (role 4).
 
-WAV/PCM read/write, embed/extract at a given offset with selectable
-bit depth (1-8), capacity check, waveform/playback comparison.
-
-Uses payload_temp for now, swap to real crypto module once A is done.
-Treats audio as raw PCM bytes (via wave module) instead of per-sample,
-so one unit = one byte, same as image_codec's per-channel-byte approach.
+Payload construction, signing, start-location derivation, and n-LSB
+embed/extract are all owned by the shared pipeline (a2_crypto +
+a2_integration.AudioCodecAdapter + A1BitstreamAdapter) - same split as
+image_codec.py. This file only reads, writes and compares raw PCM bytes.
 """
 import wave
 import numpy as np
-
-import payload_temp as pt
-from bitstream import bitstream_engine as be
 
 
 # WAV/PCM read/write
@@ -73,89 +68,6 @@ def merge_embeddable_view(arr: np.ndarray, sampwidth: int, low_bytes: np.ndarray
     return out
 
 
-# capacity check (mandatory "payload bigger than cover?" test case)
-def capacity_units(arr: np.ndarray) -> int:
-    return int(arr.size)
-
-
-def capacity_check(arr: np.ndarray, blob: bytes, bit_depth: int) -> dict:
-    cap_units = capacity_units(arr)
-    req_units = pt.required_units(len(blob) * 8, bit_depth)
-    return {
-        "fits": req_units <= cap_units,
-        "capacity_units": cap_units,
-        "required_units": req_units,
-        "bit_depth": bit_depth,
-        "blob_size_bytes": len(blob),
-    }
-
-
-# n-LSB embed/extract at a given offset
-# start-location derivation is A's job, this just embeds/extracts wherever told
-def embed_at_offset(arr: np.ndarray, blob: bytes, start_unit: int, bit_depth: int) -> np.ndarray:
-    # returns a new array, doesn't mutate original (need it for before/after)
-    if not (1 <= bit_depth <= 8):
-        raise ValueError("bit_depth must be 1-8")
-
-    flat = arr.copy()
-    values = be.bytes_to_unit_values(blob, bit_depth)
-    num_units = len(values)
-
-    if start_unit < 0 or start_unit + num_units > flat.size:
-        raise ValueError(
-            f"Payload needs {num_units} units starting at {start_unit}, "
-            f"audio only has {flat.size} units."
-        )
-
-    mask = np.uint8(0xFF ^ ((1 << bit_depth) - 1))
-    for i, value in enumerate(values):
-        idx = start_unit + i
-        flat[idx] = (flat[idx] & mask) | np.uint8(value)
-
-    return flat
-
-
-def _extract_header_bytes(arr: np.ndarray, start_unit: int, bit_depth: int) -> bytes:
-    header_bits_needed = pt.HEADER_SIZE_BYTES * 8
-    num_units = pt.required_units(header_bits_needed, bit_depth)
-    if start_unit < 0 or start_unit + num_units > arr.size:
-        raise ValueError("Start location out of range while reading header")
-
-    low_mask = (1 << bit_depth) - 1
-    values = [int(arr[start_unit + i]) & low_mask for i in range(num_units)]
-    return be.unit_values_to_bytes(values, bit_depth, total_bytes=pt.HEADER_SIZE_BYTES)
-
-
-def extract_at_offset(arr: np.ndarray, start_unit: int, bit_depth: int) -> bytes:
-    # reads header first to get payload/sig lengths, then reads the rest
-    # bad magic bytes aren't raised here, caller handles via open_protected_blob
-    header = _extract_header_bytes(arr, start_unit, bit_depth)
-    try:
-        header_info = be.parse_header(header)
-    except be.UnpackError:
-        return header
-
-    total_bytes = pt.HEADER_SIZE_BYTES + header_info["payload_len"] + header_info["sig_len"]
-    total_bits = total_bytes * 8
-    num_units = pt.required_units(total_bits, bit_depth)
-
-    if start_unit + num_units > arr.size:
-        raise ValueError("Declared payload length exceeds audio capacity from this start location")
-
-    low_mask = (1 << bit_depth) - 1
-    values = [int(arr[start_unit + i]) & low_mask for i in range(num_units)]
-    return be.unit_values_to_bytes(values, bit_depth, total_bytes=total_bytes)
-
-
-# hashing that survives the embedding itself
-def mask_low_bits(arr: np.ndarray, bit_depth: int) -> np.ndarray:
-    # zero out low bits before hashing so embedding itself doesn't
-    # trigger a false Tampered verdict. tampering outside LSB planes
-    # still changes the masked bytes and still gets caught
-    mask = np.uint8(0xFF ^ ((1 << bit_depth) - 1))
-    return (arr & mask).astype(np.uint8)
-
-
 # before/after comparison + waveform diff
 def compare_audio(cover_arr: np.ndarray, stego_arr: np.ndarray) -> dict:
     if cover_arr.shape != stego_arr.shape:
@@ -195,57 +107,3 @@ def samples_for_waveform(arr: np.ndarray, params: AudioParams) -> np.ndarray:
         return as_int32
     else:
         raise ValueError(f"Unsupported sample width: {sw} bytes")
-
-
-# high-level wrappers tying this codec to payload_temp
-def protect_audio(cover_path: str, output_path: str, media_id: str, metadata: dict,
-                   bit_depth: int, start_unit: int) -> dict:
-    arr, params = load_audio(cover_path)
-    low_bytes = embeddable_view(arr, params.sampwidth)
-
-    # Hash the FULL cover, with only the LOW bytes' about-to-be-written LSBs
-    # zeroed. High bytes are never touched by embedding, so they stay fully
-    # significant in the hash — tampering there is still caught. Masking
-    # only the low-byte plane (not the whole array like before) is what
-    # keeps this fix from silently weakening tamper detection.
-    masked_low = mask_low_bits(low_bytes, bit_depth)
-    hashable_arr = merge_embeddable_view(arr, params.sampwidth, masked_low)
-    hashable_bytes = hashable_arr.tobytes()
-
-    blob, payload = pt.build_protectable_blob(hashable_bytes, media_id, metadata, n_lsb=bit_depth)
-
-    check = capacity_check(low_bytes, blob, bit_depth)
-    if not check["fits"]:
-        raise ValueError(f"Payload too large for cover at this bit depth: {check}")
-
-    embedded_low = embed_at_offset(low_bytes, blob, start_unit, bit_depth)
-    stego_arr = merge_embeddable_view(arr, params.sampwidth, embedded_low)
-    save_audio(stego_arr, params, output_path)
-
-    return {"payload": payload, "capacity_check": check, "start_unit": start_unit, "output_path": output_path}
-
-
-def verify_audio(stego_path: str, bit_depth: int, start_unit: int) -> dict:
-    arr, params = load_audio(stego_path)
-    low_bytes = embeddable_view(arr, params.sampwidth)
-    try:
-        blob = extract_at_offset(low_bytes, start_unit, bit_depth)
-    except ValueError as exc:
-        return {"verdict": pt.Verdict.WRONG_START_LOCATION, "payload": None, "detail": str(exc)}
-
-    verdict, payload, detail = pt.open_protected_blob(blob)
-    if verdict != pt.Verdict.AUTHENTIC or payload is None:
-        return {"verdict": verdict, "payload": payload, "detail": detail}
-
-    # signature ok, now check hash to catch tampering — same full-cover,
-    # low-byte-only masking scheme as protect_audio() above, so genuine
-    # tampering anywhere (high byte or low byte) still flips the hash.
-    masked_low = mask_low_bits(low_bytes, bit_depth)
-    hashable_arr = merge_embeddable_view(arr, params.sampwidth, masked_low)
-    current_hash = pt.hash_bytes(hashable_arr.tobytes())
-    embedded_hash = payload["hash"].split("sha256:")[-1]
-    if current_hash != embedded_hash:
-        return {"verdict": pt.Verdict.TAMPERED, "payload": payload,
-                "detail": "Signature valid but recomputed hash does not match embedded hash"}
-
-    return {"verdict": pt.Verdict.AUTHENTIC, "payload": payload, "detail": "Signature and hash both check out"}
