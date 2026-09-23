@@ -1,0 +1,82 @@
+==============================================================================
+Chi-square Pairs-of-Values steganalysis (Westfeld & Pfitzmann 1999)
+Outside-analyst attack: no passphrase, no private key, file only.
+Detection threshold: p >= 0.9   |   min dof per window: 5   |   differential threshold: 0.5
+==============================================================================
+
+IMAGE -- test 1: whole-file (textbook version)
+  cover (untouched)            chi2=    141.53  dof= 108  p=0.0168  -> no signal
+  stego, n_lsb=1               chi2=    134.74  dof= 108  p=0.0416  -> no signal
+  stego, n_lsb=2               chi2=    137.83  dof= 108  p=0.0279  -> no signal
+  stego, n_lsb=3               chi2=    141.32  dof= 108  p=0.0173  -> no signal
+  stego, n_lsb=4               chi2=    138.77  dof= 108  p=0.0246  -> no signal
+  stego, n_lsb=5               chi2=    140.86  dof= 108  p=0.0184  -> no signal
+  stego, n_lsb=6               chi2=    140.46  dof= 108  p=0.0195  -> no signal
+  stego, n_lsb=7               chi2=    152.63  dof= 126  p=0.0534  -> no signal
+  stego, n_lsb=8               chi2=    144.03  dof= 116  p=0.0398  -> no signal
+
+IMAGE -- ground truth: raw byte diff (no statistics, ignores the theory)
+  n_lsb=1   2409 bytes differ, spanning units [49183:54021]
+  n_lsb=2   1801 bytes differ, spanning units [134416:136833]
+  n_lsb=3   1413 bytes differ, spanning units [113877:115490]
+  n_lsb=4   1144 bytes differ, spanning units [154161:155371]
+  n_lsb=5   939 bytes differ, spanning units [58885:59853]
+  n_lsb=6   790 bytes differ, spanning units [37235:38042]
+  n_lsb=7   687 bytes differ, spanning units [198643:199335]
+  n_lsb=8   600 bytes differ, spanning units [153900:154505]
+
+IMAGE -- oracle check: differential test on the EXACT known-true span (cheating on purpose -- see module docstring, 'ORACLE CHECK')
+  n_lsb=1   span [49183:54021] (4838 bytes)  cover p=0.9993(dof=83)  stego p=0.9128(dof=83)  delta=-0.0865  -> still no signal
+  n_lsb=2   span [134416:136833] (2417 bytes)  cover p=1.0000(dof=101)  stego p=0.9980(dof=100)  delta=-0.0020  -> still no signal
+  n_lsb=3   span [113877:115490] (1613 bytes)  cover p=1.0000(dof=97)  stego p=0.9227(dof=97)  delta=-0.0773  -> still no signal
+  n_lsb=4   span [154161:155371] (1210 bytes)  cover p=1.0000(dof=102)  stego p=0.9989(dof=101)  delta=-0.0010  -> still no signal
+  n_lsb=5   span [58885:59853] (968 bytes)  cover p=1.0000(dof=79)  stego p=0.9646(dof=86)  delta=-0.0354  -> still no signal
+  n_lsb=6   span [37235:38042] (807 bytes)  cover p=1.0000(dof=80)  stego p=0.9963(dof=93)  delta=-0.0037  -> still no signal
+  n_lsb=7   span [198643:199335] (692 bytes)  cover p=0.9999(dof=89)  stego p=0.9994(dof=122)  delta=-0.0006  -> still no signal
+  n_lsb=8   span [153900:154505] (605 bytes)  cover p=1.0000(dof=88)  stego p=0.0916(dof=73)  delta=-0.9084  -> SIGNAL PRESENT
+
+IMAGE -- test 2: naive sliding window (no reference -- KNOWN UNRELIABLE, see module docstring; run on the cover too, on purpose)
+  cover (untouched) alone flags 393/402 windows (98%) -- this number should be near ZERO for the test to mean anything; if it isn't, the test is picking up texture, not embedding
+  stego, n_lsb=1   flags 393/402 windows (98%)
+  stego, n_lsb=2   flags 393/402 windows (98%)
+  stego, n_lsb=3   flags 393/402 windows (98%)
+  stego, n_lsb=4   flags 393/402 windows (98%)
+  stego, n_lsb=5   flags 393/402 windows (98%)
+  stego, n_lsb=6   flags 393/402 windows (98%)
+  stego, n_lsb=7   flags 393/402 windows (98%)
+  stego, n_lsb=8   flags 390/402 windows (97%)
+
+IMAGE -- test 3: differential sliding window, multi-scale (vs the clean cover -- this is the reliable one). Tried at window sizes [4000, 1000, 400] because a single fixed window dilutes a small payload; see module docstring, 'WHY MULTI-SCALE'.
+  n_lsb=1   no window crossed the threshold -- closest candidate at window=4000 units [49000:53000], delta=-0.0363 (below threshold of 0.5 in either direction)
+  n_lsb=2   no window crossed the threshold -- closest candidate at window=400 units [134900:135300], delta=-0.0481 (below threshold of 0.5 in either direction)
+  n_lsb=3   no window crossed the threshold -- closest candidate at window=400 units [114700:115100], delta=+0.0701 (below threshold of 0.5 in either direction)
+  n_lsb=4   no window crossed the threshold -- closest candidate at window=400 units [154100:154500], delta=-0.1535 (below threshold of 0.5 in either direction)
+  n_lsb=5   no window crossed the threshold -- closest candidate at window=1000 units [58750:59750], delta=-0.0856 (below threshold of 0.5 in either direction)
+  n_lsb=6   no window crossed the threshold -- closest candidate at window=400 units [37300:37700], delta=-0.0296 (below threshold of 0.5 in either direction)
+  n_lsb=7   no window crossed the threshold -- closest candidate at window=4000 units [196000:200000], delta=+0.0120 (below threshold of 0.5 in either direction)
+  n_lsb=8   DETECTED at window=400 units, strongest at units [154000:154400]  (cover p=1.0000, stego p=0.0038, delta=-0.9962)
+
+AUDIO -- test 1: whole-file
+  cover (untouched)            chi2= 282528.29  dof= 127  p=0.0000  -> no signal
+  stego (as committed)         chi2= 282530.25  dof= 127  p=0.0000  -> no signal
+
+AUDIO -- test 3: differential sliding window, multi-scale (vs the clean cover, window sizes [4000, 1000, 400])
+  no window crossed the threshold -- closest candidate at window=400 units [2900:3300], delta=+0.0000 (below threshold of 0.5 in either direction)
+
+------------------------------------------------------------------------------
+READING THIS: p near 1 = this region's histogram already looks 'equalised'
+between adjacent byte-value pairs -- the LSB-replacement fingerprint. p near
+0 = looks like natural, untouched data.
+
+WHY THREE TESTS: the whole-file test (1) correctly finds nothing at low LSB
+depths, because a2_crypto's keyed placement only touches a small fraction of
+a large cover -- that is the honest limit of global steganalysis against
+small, localised payloads, not a broken test. The naive sliding window (2) is
+shown flagging a large fraction of windows even in the UNTOUCHED cover --
+real photographic texture (narrow local tone ranges) starves small windows
+of distinct values and destabilises the statistic, which is a genuine
+limitation of that test on real images, not on this LSB scheme. The
+differential test (3) fixes that by comparing each window against the same
+position in the known clean cover, cancelling the texture noise -- its own
+honest limitation is that it needs that clean reference, which a real
+attacker analysing an unknown file in isolation usually will not have.
