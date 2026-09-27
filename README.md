@@ -1,184 +1,154 @@
-# INF2005-ACW1-Steganography
-Image and Audio Steganography, Digital Signatures and Security Verification
+# INF2005 ACW1 – Steganographic Image and Audio Integrity Verification
 
-## To Run it
+A desktop application that hides a digitally signed verification payload inside
+PNG images and WAV audio using LSB replacement, then extracts it and proves
+whether the file is authentic, tampered with, or signed by someone else.
 
-pip install pillow numpy cryptography sounddevice
+- **Steganography:** LSB replacement, 1–8 selectable bits per byte
+- **Integrity:** SHA-256 hash of the cover content, signed into the payload
+- **Authenticity:** Ed25519 (default) or RSA-2048 PSS digital signatures
+- **Confidentiality:** optional AES-256-GCM encryption of the hidden message
+- **Keyed start location:** the payload's position is derived from a shared
+  passphrase (HKDF + HMAC-SHA256) and is never stored in the file
 
-python gui_app.py
-
-### GUI (person 5)
-
-`python gui_app.py` is the production GUI (Tkinter, stdlib). It has four tabs:
-
-1. **Protect** - load a PNG/WAV cover, pick a message preset (short/large/custom/
-   oversized/free), choose LSB depth (1-8), media ID, passphrase and signature
-   algorithm, watch the live capacity bar, then embed. Shows a before/after
-   comparison (image diff, or audio waveform + playback).
-2. **Verify** - load a stego file (or pull the last Protect result straight
-   across), supply the same media ID/passphrase/LSB/public key, and get a
-   colour-coded verdict with the recovered message and payload record.
-3. **Party A -> B demo** - the mandatory "email a stego file, recipient
-   downloads and verifies" case. Party A protects and "sends" into
-   `gui_out/party_a_sent/`; Party B checks that inbox, downloads a copy into
-   `gui_out/party_b_downloads/`, and verifies using only what A tells them
-   out of band (media ID, passphrase, LSB count, public key).
-4. **Attack simulation** - takes the last Protect result and applies one
-   attack at a time (content tamper, payload tamper, wrong passphrase, wrong
-   key, wrong LSB, clean cover, corrupt header), re-verifies after each, and
-   logs expected-vs-actual verdict - the required negative cases, on demand.
-
-`sounddevice` is optional: without it the app still runs, just with audio
-Play/Stop buttons disabled. (An earlier version used `simpleaudio`, which
-segfaults the whole app on Apple Silicon macOS when a clip finishes playing
-naturally - switched to `sounddevice`, which doesn't.)
-
-`a2_debug_gui.py` is a separate, earlier developer test bench for exercising
-the crypto layer directly - not the GUI the spec asks for.
-
-python tests\test_image_codec.py
-
-### For Image
-Produces image_stego.png, image_diff.png, image_tampered.png, and a
-full LSB-depth sweep (image_stego_lsb1.png ... lsb8.png, image_diff_lsb1.png
-... lsb8.png) under tests/test_evidence/image/, demonstrating the payload
-is recoverable and imperceptible across all 8 selectable bit depths.
-
-> To be deleted for final submission
-# Bitstream Engine
-## What my module is responsible for (in plain English)
-
-My code is the translator that sits between "a stream of bytes" (the
-payload — header + signed data) and "a list of small numbers, one per
-pixel or audio sample" (what the image/audio codec actually writes into
-LSBs). It never touches a pixel, a WAV file, or a PNG directly. It also
-defines the **self-describing header** so a stego file can tell a
-verifier how it was built (bit depth, payload length, signature length)
-without needing that information passed in separately.
-
-Concretely, three jobs:
-1. **Header framing** — magic bytes + version + n_lsb + payload length +
-   signature length, packed and parsed
-2. **Bit packing math** — turning payload bytes into N-bit chunks (N =
-   1 to 8, selectable), and back again
-3. **Capacity calculation** — pure math answering "does this payload fit
-   in this cover file at this bit depth?" before anyone tries to embed
-
-## Why this exists as a separate module (not just left inside the codecs)
-
-Before my module: `image_codec.py` and `audio_codec.py` each had their
-own copy-pasted version of the bit-packing loop, AND each one hardcoded
-the header byte layout directly (`struct.unpack(">II", header[5:13])`)
-instead of asking a shared function to parse it. That means:
-- Two places to keep in sync if the header format ever changes
-- No single source of truth for "what does a valid header look like"
-- The header didn't even record which bit depth was used — a verifier
-  had to be told the bit depth out-of-band, which is fragile
-
-My module fixes this by being the *one* place that understands header
-layout and bit-packing math. Both codecs can call into it identically —
-which is also the "same Codec interface for image and audio" rule our
-team agreed on, since audio and image cover objects don't need separate
-bit-packing logic.
-
-## File structure
-
-```
-bitstream/
-├── __init__.py
-├── bitstream_engine.py       ← the real module
-└── test_bitstream_engine.py  ← my own tests, don't touch teammates' tests
-```
-
-## API reference
-
-_(Fill this in / let the agent fill this in once implemented — keeping
-placeholders here so I know what to expect and can sanity-check it.)_
-
-| Function | What it does | Used by |
-|---|---|---|
-| `build_header(n_lsb, payload_len, sig_len)` | Packs the fixed-size header | `pack()` |
-| `parse_header(header_bytes)` | Unpacks + validates the header, raises `UnpackError` on bad magic/truncation | `unpack()`, codecs during extraction |
-| `pack(payload_bytes, signature, n_lsb)` | header + payload + signature → one blob ready to embed | codec `protect_*()` functions |
-| `unpack(blob)` | blob → (payload_bytes, signature, n_lsb) | codec `verify_*()` functions |
-| `required_units(num_bits, bit_depth)` | Ceiling-division capacity math | capacity checks |
-| `capacity_check(cover_units, blob_size_bytes, bit_depth)` | Pure "does it fit" check, no array dependency | codec `capacity_check()` |
-| `bytes_to_unit_values(data, n_lsb)` | Payload bytes → list of small ints to write into LSBs | codec `embed_at_offset()` |
-| `unit_values_to_bytes(values, n_lsb, total_bytes)` | Inverse — LSB values read back → bytes | codec `extract_at_offset()` |
-
-## Header format
-
-Approved and applied — bumped `STG0` → `STG1` since the byte layout changed.
-
-| Field | Size | Notes |
-|---|---|---|
-| Magic | 4 bytes | `STG1` (was `STG0` in the placeholder) |
-| Version | 1 byte | `1` |
-| n_lsb | 1 byte | **New** — not in the original placeholder header |
-| Payload length | 4 bytes | big-endian |
-| Signature length | 4 bytes | big-endian |
-
-Total: 14 bytes (was 13).
-
-`bit_depth` is still passed explicitly to `extract_at_offset()`/`verify_*()`
-(Q3 from the build spec, deferred) — `n_lsb` in the header is recorded for
-future cross-checking, not yet used to remove the explicit parameter,
-since the verifier needs *some* bit depth to read the header itself
-before it can learn n_lsb from it (chicken-and-egg otherwise).
-
-## What changed in teammates' files (Step 2 plan, approved and applied)
-
-- `payload_temp.py`: removed inline `MAGIC`/`VERSION`/`HEADER_SIZE_BYTES`/
-  `UnpackError`/`pack()`/`unpack()`/`required_units()` — now re-exported
-  from `bitstream.bitstream_engine`. `build_protectable_blob()` gained a
-  required `n_lsb` param (forwarded into `pack()`). `open_protected_blob()`
-  updated to unpack the new 3-tuple `(payload_bytes, signature, n_lsb)`
-  from `unpack()` (n_lsb currently unused there — reserved for a future
-  cross-check).
-- `image/image_codec.py`: removed `_bytes_to_bits`/`_bits_to_bytes`;
-  `embed_at_offset()` now calls `bitstream_engine.bytes_to_unit_values()`;
-  `_extract_header_bytes()`/`extract_at_offset()` now call
-  `bitstream_engine.unit_values_to_bytes()` and
-  `bitstream_engine.parse_header()` instead of the hardcoded
-  `struct.unpack(">II", header[5:13])`; `protect_image()` now passes
-  `n_lsb=bit_depth` to `build_protectable_blob()`.
-- `audio/audio_codec.py`: identical shape of changes to `image_codec.py`
-  above (same functions, same reasoning); also dropped the now-unused
-  `import struct`.
-- `tests/test_audio_codec.py`: one required fallout fix — the
-  signature-invalid test case called `pt.unpack()`/`pt.pack()` directly;
-  updated to unpack/pack the new 3-tuple (adds `n_lsb`). No other test
-  file needed changes; `tests/test_image_codec.py` doesn't call
-  `pt.pack`/`pt.unpack` directly.
-
-All three test suites (`bitstream/test_bitstream_engine.py`,
-`tests/test_image_codec.py`, `tests/test_audio_codec.py`) pass after
-these changes.
 ---
 
-## A2 — Crypto & Verdict layer (hashing, signatures, start location, verdicts)
+## Quick start
 
-Covers FR3, FR4, FR7, FR9, FR10. Self-contained in `a2_crypto/`; imports
-nothing from the other packages. Runs on person 1's bitstream engine through
-`A1BitstreamAdapter`, and on the image and audio codecs through
-`ImageCodecAdapter` / `AudioCodecAdapter` — all in `a2_integration.py`.
+Requires **Python 3.10+ with Tkinter**.
 
 ```bash
-pip install cryptography                # a2_crypto's only dependency
-
-python -m a2_crypto.selftest            # 18 internal cases -> "ALL CHECKS PASSED"
-python a2_integration.py                # real PNG + WAV + person 1's bitstream,
-                                        # then re-runs all 18 cases on that engine
-python a2_debug_gui.py                  # Protect / Verify / Trace debug bench
+pip install pillow numpy cryptography sounddevice
+python gui_app.py
 ```
 
-`a2_integration.py` writes stego files and trace JSON to `a2_out/`, and creates
-the demo keypair in `keys/` on first run.
+- `sounddevice` is optional. Without it the app still runs, with the audio
+  Play/Stop buttons disabled.
+- macOS with Homebrew Python: if you get `No module named '_tkinter'`, run
+  `brew install python-tk`, or use the python.org installer, which includes Tkinter.
 
-**Verdicts:** `Authentic`, `Tampered`, `Signature Invalid`, `Payload Missing`,
-`Wrong Start Location`, `Cannot Verify`. The passphrase, media ID and LSB count
-must match between protect and verify, or the derived start offset moves and
-you get `Wrong Start Location`.
+Sample covers for a quick demo: `tests/samples/image/chelsea_cat.png` and
+`tests/samples/audio/sample_cover.wav`.
 
-Full details: [docs/A2_CRYPTO_README.md](docs/A2_CRYPTO_README.md).
-Team integration notes: [docs/A2_HANDOFF.md](docs/A2_HANDOFF.md).
+---
+
+## Using the GUI
+
+| Tab | What it does |
+|---|---|
+| **Protect** | Load a PNG/WAV cover, choose a message (short / large / custom / oversized / free text), LSB depth, media ID, passphrase and signature algorithm, then embed. A live capacity bar blocks payloads that don't fit. The before/after comparison shows an amplified image diff or audio waveforms with playback. |
+| **Verify** | Load a stego file (or take the last Protect result), enter the same media ID, passphrase, LSB count and public key, and get a colour-coded verdict with the recovered message and payload record. |
+| **Party A → B demo** | Party A protects a file and "emails" it to `gui_out/party_a_sent/`. Party B downloads it to `gui_out/party_b_downloads/` and verifies it using only what A tells them separately (media ID, passphrase, LSB count, public key). |
+| **Attack simulation** | Applies one attack at a time to the last protected file, re-verifies it, and logs the expected verdict against the actual one. |
+
+The **media ID, passphrase and LSB count must match** between Protect and Verify.
+If any of them differs, the derived start location moves and the verdict is
+*Wrong Start Location*.
+
+A light/dark theme toggle is in the top-right corner.
+
+### Verdicts
+
+| Verdict | Meaning |
+|---|---|
+| Authentic | Signature valid and the cover content matches the signed hash |
+| Tampered | Signature valid, but the cover content changed after signing |
+| Signature Invalid | The payload was altered, or it was signed by a different key |
+| Payload Missing | No payload found anywhere in the file |
+| Wrong Start Location | A payload exists, but not where these parameters point |
+| Cannot Verify | The payload header is corrupt, the key can't be loaded, or decryption failed |
+
+If the same payload is verified twice in one session, the app flags it as a
+**replay**. Each payload carries a signed nonce, and the app remembers the
+nonces it has already accepted.
+
+### Attacks in the Attack tab
+
+| Attack | Expected verdict |
+|---|---|
+| Flip content bit | Tampered |
+| Flip payload bit | Signature Invalid |
+| Wrong passphrase | Wrong Start Location |
+| Wrong public key | Signature Invalid |
+| Use clean cover | Payload Missing |
+| Wrong n_lsb | Wrong Start Location |
+| Corrupt header | Cannot Verify |
+| Substitute payload into another cover | Tampered |
+| Replay (resend the same file) | Authentic + replay flagged |
+
+---
+
+## Running the tests
+
+Run these from the repository root:
+
+```bash
+python -m a2_crypto.selftest                 # 18 crypto-layer cases  -> ALL CHECKS PASSED
+python a2_integration.py                     # real PNG + WAV end to end -> Integration OK
+python bitstream/test_bitstream_engine.py    # bitstream engine        -> All tests passed
+python tests/test_image_codec.py             # image + LSB 1-8 sweep   -> All 8 depths Authentic
+python tests/test_audio_codec.py             # audio cases             -> All cases passed
+python -m steganalysis.chi_square_attack     # steganalysis report     -> report.txt
+```
+
+The tests write evidence (stego files, diffs, traces, the steganalysis report) to
+`tests/test_evidence/`. Rerunning them regenerates those files. To discard
+the regenerated copies, run `git restore tests/test_evidence/`.
+
+---
+
+## Project structure
+
+```
+gui_app.py              entry point for the GUI
+gui/                    production GUI: tabs, theme, icons, shared session state
+a2_crypto/              hashing, signatures, encryption, keyed start location, verdicts
+a2_integration.py       adapters that connect a2_crypto to the codecs and bitstream engine
+bitstream/              header framing, bit packing and capacity maths
+image/                  PNG codec
+audio/                  WAV codec
+steganalysis/           chi-square steganalysis attack (optional challenge)
+tests/                  codec test suites, sample covers and generated evidence
+keys/                   demo keypair (demo only, see Limitations)
+docs/                   detailed module documentation
+a2_debug_gui.py         developer test bench for the crypto layer (not the submitted GUI)
+```
+
+Generated at runtime, and git-ignored: `gui_out/`, `a2_out/`, `keys/impostor_*.pem`.
+
+---
+
+## Optional challenges
+
+| Challenge | Status | Where |
+|---|---|---|
+| Attack simulation module | Done | Attack tab (`gui/attack_tab.py`) |
+| Advanced start-location security | Done | `a2_crypto/location.py`: HKDF + HMAC-SHA256 keyed start location |
+| Steganalysis | Done | `steganalysis/chi_square_attack.py` |
+| Video cover object | Not attempted | – |
+| Robust embedding | Not attempted | – |
+
+---
+
+## Limitations
+
+- **Demo keys and passphrase are public.** `keys/demo_*.pem` and the default
+  passphrase are committed for the demo. Real use needs private keys and a
+  passphrase shared out of band.
+- **The keyed start location hides *where* the payload is, not *that* it exists.**
+  Statistical steganalysis (see `steganalysis/`) can still detect LSB embedding.
+- **At 8 LSBs, content tampering can't be detected.** Every bit of every byte
+  carries payload, so nothing is left to hash. The GUI warns when you select 8.
+- **Replay detection is per session.** Accepted nonces are kept in memory only,
+  so closing the app forgets them.
+- **Lossless formats only.** PNG and WAV survive exactly. Lossy compression
+  such as JPEG or MP3 destroys the embedded bits.
+
+---
+
+## Further documentation
+
+- [docs/A2_CRYPTO_README.md](docs/A2_CRYPTO_README.md): crypto and verdict layer
+- [docs/A2_HANDOFF.md](docs/A2_HANDOFF.md): integration notes between modules
+- [docs/BITSTREAM_README.md](docs/BITSTREAM_README.md): bitstream engine and header format
+- [docs/STEGANALYSIS_README.md](docs/STEGANALYSIS_README.md): steganalysis method and results
