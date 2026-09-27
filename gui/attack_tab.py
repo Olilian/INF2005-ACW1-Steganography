@@ -12,20 +12,29 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+import numpy as np
+
 import a2_crypto as a2
 
 from . import theme
 from .session import CoverHandle, SessionState
 from .widgets import ScrollableFrame, VerdictBanner
 
+REPLAY_FLAG = " + replay flagged"
+
 EXPECTED = {
-    "content": a2.VerdictCode.TAMPERED,
-    "payload": a2.VerdictCode.SIGNATURE_INVALID,
-    "passphrase": a2.VerdictCode.WRONG_START_LOCATION,
-    "wrongkey": a2.VerdictCode.SIGNATURE_INVALID,
-    "clean": a2.VerdictCode.PAYLOAD_MISSING,
-    "wronglsb": a2.VerdictCode.WRONG_START_LOCATION,
-    "header": a2.VerdictCode.CANNOT_VERIFY,
+    "content": str(a2.VerdictCode.TAMPERED),
+    "payload": str(a2.VerdictCode.SIGNATURE_INVALID),
+    "passphrase": str(a2.VerdictCode.WRONG_START_LOCATION),
+    "wrongkey": str(a2.VerdictCode.SIGNATURE_INVALID),
+    "clean": str(a2.VerdictCode.PAYLOAD_MISSING),
+    "wronglsb": str(a2.VerdictCode.WRONG_START_LOCATION),
+    "header": str(a2.VerdictCode.CANNOT_VERIFY),
+    # the signature is still valid, but the cover it's bound to is not this one
+    "substitute": str(a2.VerdictCode.TAMPERED),
+    # cryptographically genuine, so a2.verify() says Authentic; the GUI's
+    # nonce memory (SessionState.check_replay) is what catches it
+    "replay": str(a2.VerdictCode.AUTHENTIC) + REPLAY_FLAG,
 }
 
 
@@ -34,7 +43,12 @@ class AttackTab(ttk.Frame):
         super().__init__(master)
         self.session = session
         self.working_stego: CoverHandle | None = None
+        # snapshot of the Protect result being attacked, so protecting
+        # something new mid-session can't mix two results' parameters
         self._clean_stego: CoverHandle | None = None
+        self._clean_cover: CoverHandle | None = None
+        self._clean_result = None
+        self._clean_params: dict | None = None
         self._build()
 
     def _build(self):
@@ -84,6 +98,8 @@ class AttackTab(ttk.Frame):
             ("Use clean cover", "-> Payload Missing", self.t_clean),
             ("Wrong n_lsb", "-> Wrong Start Location", self.t_wronglsb),
             ("Corrupt header", "-> Cannot Verify", self.t_header),
+            ("Substitute into other cover", "-> Tampered", self.t_substitute),
+            ("Replay (resend same file)", "-> Authentic + replay flagged", self.t_replay),
             ("Reset to clean stego", "", self.t_reset),
         ]
         for i, (label, caption, cmd) in enumerate(buttons):
@@ -102,7 +118,7 @@ class AttackTab(ttk.Frame):
         log_frame.pack(fill="both", expand=True, padx=8, pady=6)
         cols = ("attack", "expected verdict", "actual verdict", "match")
         self.log = ttk.Treeview(log_frame, columns=cols, show="headings", height=8)
-        for c, w in zip(cols, (260, 180, 180, 60)):
+        for c, w in zip(cols, (320, 220, 220, 60)):
             self.log.heading(c, text=c)
             self.log.column(c, width=w, anchor="w")
         self.log.pack(fill="both", expand=True)
@@ -114,29 +130,33 @@ class AttackTab(ttk.Frame):
                                    "Go to the Protect tab and protect a cover first.")
             return
         self._clean_stego = self.session.last_protect_stego
-        self.working_stego = self._clean_stego
-        params = self.session.last_protect_params
-        self.media_id.set(params["media_id"])
-        self.n_lsb.set(params["n_lsb"])
-        self.passphrase.set(params["passphrase"])
-        self.algo.set(params["algo"])
-        _priv, _pub, pub_path = self.session.keys_for(self.algo.get())
-        self.pub_path.set(pub_path)
+        self._clean_cover = self.session.last_protect_cover
+        self._clean_result = self.session.last_protect
+        self._clean_params = dict(self.session.last_protect_params)
+        self.media_id.set(self._clean_params["media_id"])
+        self.algo.set(self._clean_params["algo"])
+        self._restore()
         self.src_info.set("attacking: {}".format(self._clean_stego.source))
         self.log.delete(*self.log.get_children())
+        self.verdict.clear()
 
-    def _reset_only(self):
+    def _restore(self) -> bool:
+        """Back to the clean stego AND the original verification parameters.
+        Every attack starts here, so one attack's wrong passphrase / key / LSB
+        count can't leak into the next attack and skew its verdict."""
         if self._clean_stego is None:
+            messagebox.showwarning("Nothing loaded", "Load the last Protect result first.")
             return False
         self.working_stego = self._clean_stego
+        self.n_lsb.set(self._clean_params["n_lsb"])
+        self.passphrase.set(self._clean_params["passphrase"])
+        _priv, _pub, pub_path = self.session.keys_for(self.algo.get())
+        self.pub_path.set(pub_path)
         self.src_info.set("clean stego from last Protect: {}".format(self._clean_stego.source))
         return True
 
     # -------------------------------------------------------------- attacks
     def _mutate(self, fn, note: str, key: str):
-        if self._clean_stego is None:
-            messagebox.showwarning("Nothing loaded", "Load the last Protect result first.")
-            return
         codec = self._clean_stego.codec
         sam = bytearray(codec.read_samples(self._clean_stego.view))
         fn(sam)
@@ -147,9 +167,9 @@ class AttackTab(ttk.Frame):
         self._run_verify(key, note)
 
     def t_content(self):
-        if self.session.last_protect is None:
+        if not self._restore():
             return
-        start = self.session.last_protect.start_unit
+        start = self._clean_result.start_unit
 
         def fn(sam):
             i = (start + len(sam) // 3) % len(sam)
@@ -157,19 +177,19 @@ class AttackTab(ttk.Frame):
         self._mutate(fn, "flipped one high-order content bit", "content")
 
     def t_payload(self):
-        if self.session.last_protect is None:
+        if not self._restore():
             return
-        start = self.session.last_protect.start_unit
+        start = self._clean_result.start_unit
 
         def fn(sam):
             sam[start + 200] ^= 0x01
         self._mutate(fn, "flipped one bit inside the embedded payload", "payload")
 
     def t_header(self):
-        if self.session.last_protect is None:
+        if not self._restore():
             return
-        start = self.session.last_protect.start_unit
-        n = self.session.last_protect.n_lsb
+        start = self._clean_result.start_unit
+        n = self._clean_result.n_lsb
 
         def fn(sam):
             for i in range(9 * 8 // n, 13 * 8 // n):
@@ -177,53 +197,81 @@ class AttackTab(ttk.Frame):
         self._mutate(fn, "corrupted the header length fields", "header")
 
     def t_passphrase(self):
-        if not self._reset_only():
+        if not self._restore():
             return
         self.passphrase.set("definitely-the-wrong-passphrase")
         self._run_verify("passphrase", "wrong passphrase supplied to Verify")
 
     def t_wrongkey(self):
-        if not self._reset_only():
+        if not self._restore():
             return
         self.pub_path.set(self.session.impostor_public_path(self.algo.get()))
         self._run_verify("wrongkey", "impostor public key supplied to Verify")
 
     def t_wronglsb(self):
-        if not self._reset_only():
+        if not self._restore():
             return
         cur = int(self.n_lsb.get())
         self.n_lsb.set(cur + 1 if cur < 8 else 1)
         self._run_verify("wronglsb", "LSB count changed to {}".format(self.n_lsb.get()))
 
     def t_clean(self):
-        cover = self.session.last_protect_cover
-        if cover is None:
+        if not self._restore():
             return
-        self.working_stego = cover
+        self.working_stego = self._clean_cover
         self.src_info.set("original clean cover (no payload embedded)")
         self._run_verify("clean", "used the clean cover, no payload embedded")
 
+    def t_substitute(self):
+        """Lift the whole embedded LSB plane (payload included) out of this
+        stego and plant it into a different cover of the same size. The
+        stand-in "different cover" is the original cover reversed - same
+        size, so the keyed start location still lines up, but different
+        content. The signature over the payload is still perfectly valid; it
+        fails because the payload's signed cover hash belongs to the old
+        cover. (At n_lsb = 8 there are no content bits left to compare, so
+        this can't be detected - same limit as content tampering.)"""
+        if not self._restore():
+            return
+        cover = self._clean_cover
+        other = np.frombuffer(bytes(cover.codec.read_samples(cover.view)), np.uint8)[::-1]
+        low = np.uint8((1 << int(self.n_lsb.get())) - 1)
+        high = np.uint8(0xFF) ^ low
+
+        def fn(sam):
+            planted = (other & high) | (np.frombuffer(bytes(sam), np.uint8) & low)
+            sam[:] = planted.tobytes()
+        self._mutate(fn, "signed payload lifted out and planted into a different cover",
+                     "substitute")
+
+    def t_replay(self):
+        """Deliver the same untouched stego twice. The first delivery is
+        accepted (unless this payload was already accepted earlier this
+        session - which is itself a replay); the second must be flagged."""
+        if not self._restore():
+            return
+        self.src_info.set("resending the clean stego a second time")
+        self.session.check_replay(self._verify(), self.working_stego.source)
+        self._run_verify("replay", "resent a stego that was already accepted once")
+
     def t_reset(self):
-        self._reset_only()
-        self.n_lsb.set(self.session.last_protect_params["n_lsb"])
-        self.passphrase.set(self.session.last_protect_params["passphrase"])
-        _priv, _pub, pub_path = self.session.keys_for(self.algo.get())
-        self.pub_path.set(pub_path)
+        self._restore()
 
     # -------------------------------------------------------------- verify
-    def _run_verify(self, key: str, note: str):
-        if self.working_stego is None:
-            return
+    def _verify(self):
         try:
             pub = a2.load_public(self.pub_path.get())
         except a2.KeyError_ as exc:
-            v = a2.Verdict(a2.VerdictCode.CANNOT_VERIFY, str(exc))
-        else:
-            v = a2.verify(self.working_stego.view, self.media_id.get(), int(self.n_lsb.get()),
+            return a2.Verdict(a2.VerdictCode.CANNOT_VERIFY, str(exc))
+        return a2.verify(self.working_stego.view, self.media_id.get(), int(self.n_lsb.get()),
                          self.passphrase.get(), pub, codec=self.working_stego.codec,
                          bits=self.session.bits, algo=self.algo.get())
-        self.verdict.show(v)
-        expected = EXPECTED.get(key)
-        match = "yes" if (expected is None or v.code == expected) else "no"
-        self.log.insert("", "end", values=(note, str(expected) if expected else "-",
-                                           str(v.code), match))
+
+    def _run_verify(self, key: str, note: str):
+        v = self._verify()
+        replay_of = self.session.check_replay(v, self.working_stego.source)
+        self.verdict.show(v, replay_of)
+        actual = str(v.code) + (REPLAY_FLAG if replay_of else "")
+        expected = EXPECTED[key]
+        self.log.insert("", "end", values=(note, expected, actual,
+                                           "yes" if actual == expected else "no"))

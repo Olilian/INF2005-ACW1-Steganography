@@ -17,7 +17,8 @@ from a2_crypto import Trace
 from . import session as sess
 from . import theme
 from .session import CoverHandle, SessionState
-from .widgets import AudioPlayButton, ImagePreview, ScrollableFrame, VerdictBanner, WaveformView
+from .widgets import (AudioPlayButton, ImagePreview, ScrollableFrame, VerdictBanner,
+                      WaveformView, read_n_lsb)
 
 MONO = theme.mono_font(10)
 
@@ -82,8 +83,12 @@ class VerifyTab(ttk.Frame):
                                                     sticky="w", padx=4, pady=(0, 4))
         self._use_demo_key()
 
-        ttk.Button(body, text="Verify", command=self.do_verify,
-                  style="Accent.TButton").pack(pady=8)
+        actions = ttk.Frame(body)
+        actions.pack(pady=8)
+        ttk.Button(actions, text="Verify", command=self.do_verify,
+                  style="Accent.TButton").pack(side="left")
+        ttk.Button(actions, text="Clear replay memory",
+                  command=self._clear_replay).pack(side="left", padx=8)
 
         self.verdict = VerdictBanner(body)
         self.verdict.pack(fill="x", padx=8, pady=4)
@@ -128,6 +133,10 @@ class VerifyTab(ttk.Frame):
 
     def _set_stego(self, stego: CoverHandle):
         self.stego = stego
+        # don't leave the previous file's verdict showing next to a new file
+        self.verdict.clear()
+        self.checks.delete("1.0", "end")
+        self.recovered.delete("1.0", "end")
         for child in self.play_holder.winfo_children():
             child.destroy()
         for child in self.preview_frame.winfo_children():
@@ -170,6 +179,9 @@ class VerifyTab(ttk.Frame):
         if self.stego is None:
             messagebox.showwarning("No stego object", "Load a stego file first.")
             return
+        n_lsb = read_n_lsb(self.n_lsb)
+        if n_lsb is None:
+            return
         try:
             pub = a2.load_public(self.pub_path.get())
         except a2.KeyError_ as exc:
@@ -177,15 +189,28 @@ class VerifyTab(ttk.Frame):
             return
 
         tr = Trace("verify")
-        v = a2.verify(self.stego.view, self.media_id.get(), int(self.n_lsb.get()),
+        v = a2.verify(self.stego.view, self.media_id.get(), n_lsb,
                      self.passphrase.get(), pub, codec=self.stego.codec,
                      bits=self.session.bits, algo=self.algo.get(), trace=tr)
-        self._show(v)
+        self._show(v, self.session.check_replay(v, self.stego.source))
 
-    def _show(self, v):
-        self.verdict.show(v)
+    def _clear_replay(self):
+        n = self.session.clear_replay_memory()
+        messagebox.showinfo("Replay memory cleared",
+                            "Forgot {} accepted payload(s). The next verification of any of "
+                            "them counts as a first delivery again.".format(n))
+
+    def _show(self, v, replay_of=None):
+        self.verdict.show(v, replay_of)
+        if replay_of:
+            replay_line = "REPLAY - first accepted from: {}".format(replay_of)
+        elif v.code is a2.VerdictCode.AUTHENTIC:
+            replay_line = "first delivery of this payload (nonce remembered)"
+        else:
+            replay_line = "n/a (payload not accepted)"
         lines = ["source        : {}".format(self.stego.source if self.stego else "-"),
-                 "meaning       : {}".format(a2.VERDICT_MEANING[v.code]), ""]
+                 "meaning       : {}".format(a2.VERDICT_MEANING[v.code]),
+                 "replay check  : {}".format(replay_line), ""]
         for k, val in (v.details or {}).items():
             lines.append("{:<20}: {}".format(k, val))
         if v.payload is not None:

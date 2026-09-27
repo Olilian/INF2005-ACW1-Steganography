@@ -24,7 +24,7 @@ maintained.
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
 import numpy as np
 from PIL import Image, ImageTk
@@ -56,6 +56,19 @@ def _pcm_bytes_to_array(data: bytes, sampwidth: int) -> np.ndarray:
         as_int32 = np.where(as_int32 & 0x800000, as_int32 - 0x1000000, as_int32)
         return (as_int32 << 8).astype(np.int32)
     raise ValueError("Unsupported sample width for playback: {} bytes".format(sampwidth))
+
+
+def read_n_lsb(var) -> int | None:
+    """The LSB spinbox value, or None after telling the user it's invalid.
+    A spinbox accepts typed text, and IntVar.get() raises on 'abc'."""
+    try:
+        n = int(var.get())
+    except (tk.TclError, ValueError):
+        n = None
+    if n is None or not 1 <= n <= 8:
+        messagebox.showwarning("Invalid LSB count", "LSBs must be a whole number from 1 to 8.")
+        return None
+    return n
 
 
 # =============================================================================
@@ -238,11 +251,15 @@ class AudioPlayButton(ttk.Frame):
         if pcm is None:
             return
         data, n_channels, sampwidth, framerate = pcm
-        self._stop()
-        arr = _pcm_bytes_to_array(data, sampwidth)
-        if n_channels > 1:
-            arr = arr.reshape(-1, n_channels)
-        sd.play(arr, framerate)
+        try:
+            self._stop()
+            arr = _pcm_bytes_to_array(data, sampwidth)
+            if n_channels > 1:
+                arr = arr.reshape(-1, n_channels)
+            sd.play(arr, framerate)
+        except Exception as exc:  # e.g. no audio output device on a lab/projector PC
+            messagebox.showerror("Audio playback failed",
+                                 "Could not play this clip: {}".format(exc))
 
     def _stop(self):
         if PLAYBACK_AVAILABLE:
@@ -299,7 +316,17 @@ class VerdictBanner(tk.Frame):
                                font=theme.font(10), padx=10, pady=6)
         self.reason.pack(fill="x")
 
-    def show(self, verdict):
+    def show(self, verdict, replay_of: str | None = None):
+        if replay_of:
+            self.banner.configure(text="{} - REPLAY DETECTED".format(str(verdict.code).upper()),
+                                  bg=theme.COLORS["warn"], fg=theme.COLORS["bg"])
+            self.reason.configure(
+                text="The signature and hash check out, but this exact payload (same signed "
+                     "nonce) was already accepted earlier this session, from: {}. A genuine "
+                     "file being delivered again is a replay - treat it as suspicious. "
+                     "(Remembered only while the app is open.)".format(replay_of),
+                foreground=theme.COLORS["text"])
+            return
         self.banner.configure(text=str(verdict.code).upper(), bg=verdict.colour, fg="white")
         self.reason.configure(text=verdict.reason, foreground=theme.COLORS["text"])
 

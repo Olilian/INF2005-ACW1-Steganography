@@ -86,6 +86,29 @@ class SessionState:
         self.last_protect_stego: CoverHandle | None = None
         self.last_protect_params: dict | None = None  # media_id/n_lsb/passphrase/algo used
 
+        # Replay detection. Every payload carries a signed random nonce, but
+        # a2.verify() never checks it against anything, so a genuine file
+        # resent later still verifies Authentic. The GUI remembers the nonce
+        # of every payload it has accepted; seeing one again is a replay.
+        # Held in memory only, so it forgets everything when the app closes.
+        self.accepted_nonces: dict[str, str] = {}   # nonce -> where first accepted
+
+    def check_replay(self, verdict, source: str) -> str | None:
+        """Where this payload was first accepted if it's a replay, else None
+        (and remember it). Only Authentic verdicts count as accepted."""
+        if verdict.code is not a2.VerdictCode.AUTHENTIC or verdict.payload is None:
+            return None
+        nonce = verdict.payload.nonce
+        if nonce in self.accepted_nonces:
+            return self.accepted_nonces[nonce]
+        self.accepted_nonces[nonce] = source
+        return None
+
+    def clear_replay_memory(self) -> int:
+        n = len(self.accepted_nonces)
+        self.accepted_nonces.clear()
+        return n
+
     def codec_for(self, media_type: str):
         return self.image_codec if media_type == "image" else self.audio_codec
 

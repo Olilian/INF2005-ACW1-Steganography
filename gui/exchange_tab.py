@@ -23,7 +23,7 @@ from a2_crypto import Trace
 from . import session as sess
 from . import theme
 from .session import CoverHandle, SessionState
-from .widgets import CapacityBar, ScrollableFrame, VerdictBanner
+from .widgets import CapacityBar, ScrollableFrame, VerdictBanner, read_n_lsb
 
 MONO = theme.mono_font(10)
 
@@ -131,12 +131,23 @@ class ExchangeTab(ttk.Frame):
         if self.a_cover is None:
             messagebox.showwarning("No cover", "Party A needs to load a cover first.")
             return
+        n_lsb = read_n_lsb(self.a_n_lsb)
+        if n_lsb is None:
+            return
+        if not self.a_passphrase.get():
+            messagebox.showwarning("Passphrase required",
+                                   "Party A needs a passphrase - an empty one would let "
+                                   "anyone find and read the payload.")
+            return
+        if not self.a_media_id.get().strip():
+            messagebox.showwarning("Media ID required", "Party A needs a media ID.")
+            return
         priv, _pub, _pub_path = self.session.keys_for(self.a_algo.get())
         message = sess.MESSAGE_PRESETS[self.a_msg_kind.get()]()
         tr = Trace("protect")
         try:
             res = a2.protect(
-                self.a_cover.view, message, self.a_media_id.get(), int(self.a_n_lsb.get()),
+                self.a_cover.view, message, self.a_media_id.get(), n_lsb,
                 self.a_passphrase.get(), priv, codec=self.a_cover.codec, bits=self.session.bits,
                 media_type=self.a_cover.media_type, algo=self.a_algo.get(),
                 encrypt=True, trace=tr)
@@ -162,7 +173,7 @@ class ExchangeTab(ttk.Frame):
             "passphrase, the LSB count ({}) and share the public key - none of that "
             "travels with the attachment.".format(
                 filename, res.algo, len(res.signature), res.start_unit,
-                self.a_media_id.get(), self.a_n_lsb.get()))
+                self.a_media_id.get(), n_lsb))
         self.event_generate("<<OutboxUpdated>>")
 
     # --------------------------------------------------------------- party B
@@ -225,12 +236,26 @@ class ExchangeTab(ttk.Frame):
         name = self.b_listbox.get(sel[0])
         src = os.path.join(sess.OUTBOX_DIR, name)
         dst = os.path.join(sess.INBOX_DIR, name)
-        shutil.copyfile(src, dst)
         media_type = "image" if name.lower().endswith(".png") else "audio"
         codec = self.session.codec_for(media_type)
-        self.b_stego = CoverHandle(media_type, codec, codec.load(dst),
+        try:
+            shutil.copyfile(src, dst)
+            view = codec.load(dst)
+        except FileNotFoundError:
+            messagebox.showwarning("File no longer in the outbox",
+                                   "'{}' is no longer in Party A's outbox. The inbox list "
+                                   "has been refreshed.".format(name))
+            self._b_refresh_inbox()
+            return
+        except Exception as exc:
+            messagebox.showerror("Download failed", "{}: {}".format(type(exc).__name__, exc))
+            return
+        self.b_stego = CoverHandle(media_type, codec, view,
                                    "downloaded from inbox: {}".format(name))
         self.b_src_info.set("Downloaded to {}".format(dst))
+        # don't leave the previous file's verdict showing next to a new file
+        self.b_verdict.clear()
+        self.b_out.delete("1.0", "end")
 
     def _b_pick_pub(self):
         path = filedialog.askopenfilename(title="Public key", filetypes=[("PEM", "*.pem")])
@@ -245,16 +270,22 @@ class ExchangeTab(ttk.Frame):
         if self.b_stego is None:
             messagebox.showwarning("Nothing downloaded", "Download a file from the inbox first.")
             return
+        n_lsb = read_n_lsb(self.b_n_lsb)
+        if n_lsb is None:
+            return
         try:
             pub = a2.load_public(self.b_pub_path.get())
         except a2.KeyError_ as exc:
             self.b_verdict.show(a2.Verdict(a2.VerdictCode.CANNOT_VERIFY, str(exc)))
             return
-        v = a2.verify(self.b_stego.view, self.b_media_id.get(), int(self.b_n_lsb.get()),
+        v = a2.verify(self.b_stego.view, self.b_media_id.get(), n_lsb,
                      self.b_passphrase.get(), pub, codec=self.b_stego.codec,
                      bits=self.session.bits, algo=self.b_algo.get())
-        self.b_verdict.show(v)
+        replay_of = self.session.check_replay(v, self.b_stego.source)
+        self.b_verdict.show(v, replay_of)
         lines = ["proof of integrity + signature verification:", ""]
+        if replay_of:
+            lines += ["REPLAY - this payload was already accepted from: {}".format(replay_of), ""]
         for k, val in (v.details or {}).items():
             lines.append("{:<20}: {}".format(k, val))
         if v.message is not None:

@@ -17,7 +17,8 @@ from a2_crypto import Trace
 from . import session as sess
 from . import theme
 from .session import CoverHandle, SessionState
-from .widgets import AudioPlayButton, CapacityBar, ImagePreview, ScrollableFrame, WaveformView
+from .widgets import (AudioPlayButton, CapacityBar, ImagePreview, ScrollableFrame,
+                      WaveformView, read_n_lsb)
 
 MONO = theme.mono_font(10)
 
@@ -49,6 +50,8 @@ class ProtectTab(ttk.Frame):
         msg = ttk.LabelFrame(body, text="2. Hidden message (FR3 payload content)")
         msg.pack(fill="x", padx=8, pady=6)
         self.msg_kind = tk.StringVar(value="short")
+        self._prev_msg_kind = "short"
+        self._free_draft = ""
         for i, key in enumerate(("short", "large", "custom", "oversized", "free")):
             ttk.Radiobutton(msg, text=sess.MESSAGE_LABELS[key], variable=self.msg_kind,
                             value=key, command=self._on_message_change).grid(
@@ -92,6 +95,11 @@ class ProtectTab(ttk.Frame):
 
         self.cap_bar = CapacityBar(body)
         self.cap_bar.pack(fill="x", padx=8, pady=6)
+        # packed under the capacity bar only while n_lsb = 8 (see _update_lsb_warning)
+        self.lsb_warn = tk.Label(body, anchor="w", justify="left", wraplength=1000,
+                                 background=theme.COLORS["warn_bg"],
+                                 foreground=theme.COLORS["warn"],
+                                 font=theme.font(10, "bold"), padx=10, pady=6)
 
         act = ttk.Frame(body)
         act.pack(fill="x", padx=8, pady=4)
@@ -140,8 +148,14 @@ class ProtectTab(ttk.Frame):
     # ------------------------------------------------------------- message
     def _on_message_change(self):
         kind = self.msg_kind.get()
-        if kind != "free":
-            self.msg_text.delete("1.0", "end")
+        if self._prev_msg_kind == "free" and kind != "free":
+            self._free_draft = self._message()
+        self._prev_msg_kind = kind
+        self.msg_text.delete("1.0", "end")
+        if kind == "free":
+            self.msg_text.insert("1.0", self._free_draft)
+            self.msg_text.focus_set()
+        else:
             self.msg_text.insert("1.0", sess.MESSAGE_PRESETS[kind]())
         self._update_capacity()
 
@@ -150,14 +164,18 @@ class ProtectTab(ttk.Frame):
 
     # ------------------------------------------------------------ capacity
     def _update_capacity(self):
+        # parsed quietly here (this runs on every keypress); do_protect() is
+        # where an invalid value gets a popup
+        try:
+            n_lsb = int(self.n_lsb.get())
+            valid = 1 <= n_lsb <= 8
+        except Exception:
+            valid = False
+        self._update_lsb_warning(n_lsb if valid else None)
         if self.cover is None:
             self.cap_bar.set_message("load a cover to see capacity")
             return
-        try:
-            n_lsb = int(self.n_lsb.get())
-            if not (1 <= n_lsb <= 8):
-                raise ValueError
-        except Exception:
+        if not valid:
             self.cap_bar.set_message("n_lsb must be 1-8")
             return
         try:
@@ -168,17 +186,48 @@ class ProtectTab(ttk.Frame):
             return
         self.cap_bar.update_report(report)
 
+    def _update_lsb_warning(self, n_lsb):
+        """A2 handoff requirement: warn at n_lsb = 8. Every bit of every byte
+        then carries payload, so the cover hash has nothing left to cover."""
+        if n_lsb is not None and not a2.tamper_detection_strength(n_lsb)["detects_content_tampering"]:
+            self.lsb_warn.configure(
+                text="Warning: at 8 LSBs every bit of every cover byte carries payload, so "
+                     "content tampering and payload substitution can NOT be detected - only "
+                     "the signature still protects the payload itself. Use 7 or fewer LSBs "
+                     "if you need tamper detection.")
+            if not self.lsb_warn.winfo_manager():
+                self.lsb_warn.pack(fill="x", padx=8, pady=(0, 6), after=self.cap_bar)
+        else:
+            self.lsb_warn.pack_forget()
+
     # -------------------------------------------------------------- protect
     def do_protect(self):
         if self.cover is None:
             messagebox.showwarning("No cover", "Load a PNG or WAV cover first.")
+            return
+        n_lsb = read_n_lsb(self.n_lsb)
+        if n_lsb is None:
+            return
+        if not self.passphrase.get():
+            messagebox.showwarning(
+                "Passphrase required",
+                "Enter a passphrase. It derives both where the payload is hidden and the "
+                "key that encrypts it - an empty one would let anyone find and read it.")
+            return
+        if not self.media_id.get().strip():
+            messagebox.showwarning("Media ID required",
+                                   "Enter a media ID - it's signed into the payload and "
+                                   "also decides where the payload is hidden.")
+            return
+        if not self._message() and not messagebox.askyesno(
+                "Empty message", "The hidden message is empty. Protect anyway?"):
             return
         priv, _pub, _pub_path = self.session.keys_for(self.algo.get())
         tr = Trace("protect")
         try:
             res = a2.protect(
                 self.cover.view, self._message(), self.media_id.get(),
-                int(self.n_lsb.get()), self.passphrase.get(), priv,
+                n_lsb, self.passphrase.get(), priv,
                 codec=self.cover.codec, bits=self.session.bits,
                 media_type=self.cover.media_type, algo=self.algo.get(),
                 encrypt=self.encrypt.get(), trace=tr)
@@ -200,7 +249,7 @@ class ProtectTab(ttk.Frame):
                             "protected just now from {}".format(self.cover.source))
         self.session.last_protect_stego = stego
         self.session.last_protect_params = {
-            "media_id": self.media_id.get(), "n_lsb": int(self.n_lsb.get()),
+            "media_id": self.media_id.get(), "n_lsb": n_lsb,
             "passphrase": self.passphrase.get(), "algo": self.algo.get(),
         }
 

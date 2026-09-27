@@ -5,7 +5,8 @@ and Attack tabs sharing one SessionState.
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import ttk
+import traceback
+from tkinter import messagebox, ttk
 
 from PIL import ImageTk
 
@@ -132,6 +133,14 @@ class App(tk.Tk):
             row, image=toggle_icon, text="  {} mode".format(other.capitalize()),
             compound="left", command=self.toggle_theme, style="Toggle.TButton")
         toggle.pack(side="right", padx=(10, 0), anchor="n")
+
+    def report_callback_exception(self, exc, val, tb):
+        """Safety net: Tk's default just prints a traceback to the terminal,
+        so an unexpected error in any button looked like the button did
+        nothing. Keep the traceback for debugging, but tell the user too."""
+        traceback.print_exception(exc, val, tb)
+        messagebox.showerror("Unexpected error",
+                             "Something went wrong:\n\n{}: {}".format(exc.__name__, val))
 
     # =====================================================================
     def toggle_theme(self):
