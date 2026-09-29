@@ -9,6 +9,7 @@ as the optional "attack simulation module" challenge.
 """
 from __future__ import annotations
 
+import os
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -36,6 +37,10 @@ EXPECTED = {
     # nonce memory (SessionState.check_replay) is what catches it
     "replay": str(a2.VerdictCode.AUTHENTIC) + REPLAY_FLAG,
 }
+
+
+ATTACK_PARAMS = ("File under test", "Media ID", "LSBs", "Passphrase", "Signature algorithm",
+                 "Public key used")
 
 
 class AttackTab(ttk.Frame):
@@ -69,20 +74,31 @@ class AttackTab(ttk.Frame):
         ttk.Label(top, textvariable=self.src_info, foreground=theme.COLORS["muted"]).pack(
             side="left", padx=10)
 
-        par = ttk.LabelFrame(body, text="Verification parameters used for every attack below")
+        par = ttk.LabelFrame(body, text="Parameters used by this attack (amber = changed from "
+                                        "the Protect result by this attack)")
         par.pack(fill="x", padx=8, pady=6)
         self.media_id = tk.StringVar(value="-")
         self.n_lsb = tk.IntVar(value=2)
         self.passphrase = tk.StringVar(value="-")
         self.algo = tk.StringVar(value=a2.DEFAULT_SIGN_ALGO)
         self.pub_path = tk.StringVar(value="")
-        ttk.Label(par, text="Media ID:").grid(row=0, column=0, sticky="e", padx=4, pady=4)
-        ttk.Label(par, textvariable=self.media_id).grid(row=0, column=1, sticky="w")
-        ttk.Label(par, text="LSBs:").grid(row=0, column=2, sticky="e", padx=4)
-        ttk.Label(par, textvariable=self.n_lsb).grid(row=0, column=3, sticky="w")
-        ttk.Label(par, text="Public key in use:").grid(row=1, column=0, sticky="e", padx=4)
-        ttk.Label(par, textvariable=self.pub_path, foreground=theme.COLORS["muted"]).grid(
-            row=1, column=1, columnspan=3, sticky="w")
+        self.params_title = tk.Label(par, text="Load the last Protect result to see its "
+                                               "parameters.", anchor="w",
+                                     background=theme.COLORS["bg"],
+                                     foreground=theme.COLORS["muted"],
+                                     font=theme.font(11, "bold"))
+        self.params_title.grid(row=0, column=0, columnspan=4, sticky="w", padx=6, pady=(4, 2))
+        self._param_values = {}
+        for i, name in enumerate(ATTACK_PARAMS):
+            r, col = 1 + i // 2, (i % 2) * 2
+            ttk.Label(par, text=name + ":").grid(row=r, column=col, sticky="e", padx=(6, 4),
+                                                 pady=1)
+            val = tk.Label(par, text="-", anchor="w", background=theme.COLORS["bg"],
+                           foreground=theme.COLORS["text"], font=theme.mono_font(10), padx=4)
+            val.grid(row=r, column=col + 1, sticky="w", pady=1)
+            self._param_values[name] = val
+        par.columnconfigure(1, weight=1)
+        par.columnconfigure(3, weight=1)
 
         tam = ttk.LabelFrame(body, text="Attack toolbar")
         tam.pack(fill="x", padx=8, pady=6)
@@ -157,7 +173,40 @@ class AttackTab(ttk.Frame):
         _priv, _pub, pub_path = self.session.keys_for(self.algo.get())
         self.pub_path.set(pub_path)
         self.src_info.set("clean stego from last Protect: {}".format(self._clean_stego.source))
+        self._show_params()
         return True
+
+    def _show_params(self, attack: str | None = None):
+        """Render what the next/last verify actually uses, amber where it
+        differs from the Protect result being attacked."""
+        c = theme.COLORS
+        clean_pub = self.session.keys_for(self.algo.get())[2]
+        pub = self.pub_path.get()
+        rows = {
+            "File under test": ("clean stego from Protect" if self.working_stego is self._clean_stego
+                                else self.working_stego.source,
+                                self.working_stego is not self._clean_stego),
+            "Media ID": (self.media_id.get(), self.media_id.get() != self._clean_params["media_id"]),
+            "LSBs": (str(self.n_lsb.get()), int(self.n_lsb.get()) != self._clean_params["n_lsb"]),
+            "Passphrase": (self.passphrase.get(),
+                           self.passphrase.get() != self._clean_params["passphrase"]),
+            "Signature algorithm": (self.algo.get(), False),
+            "Public key used": ("{} ({})".format(os.path.basename(pub),
+                                                 "matches signer" if pub == clean_pub
+                                                 else "IMPOSTOR key"), pub != clean_pub),
+        }
+        changed = [n for n, (_v, ch) in rows.items() if ch]
+        for name, (value, ch) in rows.items():
+            self._param_values[name].configure(text=value,
+                                               background=c["warn_bg"] if ch else c["bg"],
+                                               foreground=c["warn"] if ch else c["text"])
+        if attack is None:
+            title, fg = "Clean Protect result - no attack applied yet", c["text"]
+        else:
+            title = "{}  -  {}".format(attack, "changed: " + ", ".join(changed) if changed
+                                      else "nothing changed; same file and parameters")
+            fg = c["warn"] if changed else c["text"]
+        self.params_title.configure(text=title, foreground=fg)
 
     # -------------------------------------------------------------- attacks
     def _mutate(self, fn, note: str, key: str):
@@ -276,6 +325,7 @@ class AttackTab(ttk.Frame):
                          bits=self.session.bits, algo=self.algo.get())
 
     def _run_verify(self, key: str, note: str):
+        self._show_params(note)
         v = self._verify()
         replay_of = self.session.check_replay(v, self.working_stego.source)
         self.verdict.show(v, replay_of)
