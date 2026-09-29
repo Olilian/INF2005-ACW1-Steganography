@@ -118,7 +118,7 @@ class AttackTab(ttk.Frame):
         self.verdict = VerdictBanner(body)
         self.verdict.pack(fill="x", padx=8, pady=4)
 
-        log_frame = ttk.LabelFrame(body, text="Evidence log (screenshot this for the submission)")
+        log_frame = ttk.LabelFrame(body, text="Evidence log")
         log_frame.pack(fill="both", expand=True, padx=8, pady=6)
         cols = ("attack", "expected verdict", "actual verdict", "match")
         self.log = ttk.Treeview(log_frame, columns=cols, show="headings", height=8)
