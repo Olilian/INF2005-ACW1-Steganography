@@ -166,6 +166,24 @@ Generated at runtime, and git-ignored: `gui_out/`, `a2_out/`, `keys/impostor_*.p
 
 ---
 
+## AI Use
+
+Generative AI was used selectively by team members during development, mainly for:
+
+- Debugging and reviewing individual modules (e.g. codec logic, integration
+  wiring) against the project's own test suites
+- Extending test/attack case coverage
+- General code review, explanation, and documentation support while
+  implementing assigned components
+
+All AI-suggested code was read, tested, and verified by the responsible team
+member before being merged, and nothing was used unreviewed. Design decisions
+(module boundaries, the Codec/Bitstream port split, the keyed start-location
+scheme, and the overall security workflow) were made by the team. AI was
+used as a debugging and review aid, not as the source of the architecture.
+
+---
+
 ## Further documentation
 
 - [docs/A2_CRYPTO_README.md](docs/A2_CRYPTO_README.md): crypto and verdict layer
