@@ -1,0 +1,21 @@
+# INF2005 ACW1 - Steganographic Image and Audio Integrity Verification
+#
+#     pip install -r requirements.txt
+#     python gui_app.py
+#
+# Tkinter is not listed here: it ships with CPython and cannot be pip-installed.
+# On Homebrew Python run `brew install python-tk` if you hit _tkinter errors.
+
+pillow>=10.0            # PNG read/write (image codec)
+numpy>=1.24             # sample arrays for both codecs
+cryptography>=41.0      # Ed25519 / RSA-PSS signing, HKDF, AES-256-GCM
+
+# Audio playback in the GUI. The spec requires the GUI to play the audio
+# cover and stego objects, so treat this as required for the demo even though
+# the app degrades gracefully (Play buttons disable themselves) without it.
+sounddevice>=0.4
+
+# Used by the test suites for the waveform comparison plot and the
+# steganalysis chart. The tests skip those plots if they are absent.
+matplotlib>=3.7
+scipy>=1.10

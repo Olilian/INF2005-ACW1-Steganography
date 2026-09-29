@@ -18,12 +18,13 @@ whether the file is authentic, tampered with, or signed by someone else.
 Requires **Python 3.10+ with Tkinter**.
 
 ```bash
-pip install pillow numpy cryptography sounddevice
+pip install -r requirements.txt
 python gui_app.py
 ```
 
-- `sounddevice` is optional. Without it the app still runs, with the audio
-  Play/Stop buttons disabled.
+- Install `sounddevice` before demoing. The app still runs without it, but the
+  audio Play/Stop buttons disable themselves, and playing the audio cover and
+  stego objects is part of the required scope.
 - macOS with Homebrew Python: if you get `No module named '_tkinter'`, run
   `brew install python-tk`, or use the python.org installer, which includes Tkinter.
 
@@ -139,6 +140,13 @@ Generated at runtime, and git-ignored: `gui_out/`, `a2_out/`, `keys/impostor_*.p
   Statistical steganalysis (see `steganalysis/`) can still detect LSB embedding.
 - **At 8 LSBs, content tampering can't be detected.** Every bit of every byte
   carries payload, so nothing is left to hash. The GUI warns when you select 8.
+- **What the integrity hash covers is wider than what the carrier writes to.**
+  For WAV/PCM the payload only ever goes into the low byte of each sample
+  (a flipped bit in a high byte is audible), but the hash covers *every* raw
+  byte via the codec's `digest_samples()`. Hashing only the embeddable bytes
+  would leave the loud half of the audio unprotected — an attacker could
+  rewrite every high byte and still get an `Authentic` verdict. That case is
+  now a regression test in `tests/test_audio_codec.py`.
 - **Replay detection is per session.** Accepted nonces are kept in memory only,
   so closing the app forgets them.
 - **Lossless formats only.** PNG and WAV survive exactly. Lossy compression

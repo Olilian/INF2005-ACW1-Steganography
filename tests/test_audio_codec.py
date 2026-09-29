@@ -143,6 +143,37 @@ def run_required_cases(codec, bits, priv, pub, impostor_pub, cover):
     print("Verdict:", v_tamper.code, "-", v_tamper.reason)
     assert v_tamper.code == VerdictCode.TAMPERED, "Expected Tampered after flipping cover bytes"
 
+    print("\n== Negative case: HIGH-byte-only tampering (integrity coverage) ==")
+    # Every other tamper case in this file mutates through read_samples(),
+    # which for WAV/PCM narrows to the LOW byte of each sample - the only
+    # bytes the carrier is allowed to touch. That means those cases can only
+    # ever exercise bytes the digest already covered, and a hole in the OTHER
+    # half of the file was invisible to the whole suite.
+    #
+    # This case goes around read_samples() on purpose and rewrites only the
+    # HIGH bytes, which carry no payload but hold most of each sample's
+    # amplitude. It turns the audio into noise without disturbing a single
+    # embedded bit, so the payload still extracts and its signature still
+    # verifies - only the cover hash can catch it. Before digest_samples()
+    # existed this returned Authentic.
+    high_view = codec.load(stego_path)
+    high_arr, high_params = high_view
+    smashed = high_arr.copy()
+    if high_params.sampwidth > 1:
+        for off in range(1, high_params.sampwidth):
+            smashed[off::high_params.sampwidth] ^= 0x55
+        assert not np.array_equal(smashed, high_arr), "high-byte tamper changed nothing"
+        v_high = a2.verify((smashed, high_params), MEDIA_ID, N_LSB, PASSPHRASE, pub,
+                           codec=codec, bits=bits)
+        print("Rewrote every high byte ({:,} of {:,} raw bytes, 0 payload bits touched)".format(
+            int((smashed != high_arr).sum()), smashed.size))
+        print("Verdict:", v_high.code, "-", v_high.reason)
+        assert v_high.code == VerdictCode.TAMPERED, (
+            "High-byte tampering must be detected: the integrity hash has to cover "
+            "the whole medium, not just the bytes the carrier writes into.")
+    else:
+        print("8-bit PCM: every byte is embeddable, so there are no high bytes. Skipped.")
+
     print("\n== Negative case: wrong passphrase -> Wrong Start Location ==")
     v_wrong_loc = a2.verify(codec.load(stego_path), MEDIA_ID, N_LSB, "wrong-passphrase", pub,
                             codec=codec, bits=bits)

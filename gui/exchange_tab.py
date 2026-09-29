@@ -193,7 +193,7 @@ class ExchangeTab(ttk.Frame):
 
         form = ttk.Frame(b)
         form.pack(fill="x", padx=6, pady=6)
-        self.b_media_id = tk.StringVar(value="IMG-0007")
+        self.b_media_id = tk.StringVar(value=sess.DEFAULT_MEDIA_ID["image"])
         self.b_passphrase = tk.StringVar(value=sess.DEFAULT_PASSPHRASE)
         self.b_n_lsb = tk.IntVar(value=2)
         self.b_algo = tk.StringVar(value=a2.DEFAULT_SIGN_ALGO)
@@ -253,6 +253,14 @@ class ExchangeTab(ttk.Frame):
         self.b_stego = CoverHandle(media_type, codec, view,
                                    "downloaded from inbox: {}".format(name))
         self.b_src_info.set("Downloaded to {}".format(dst))
+        # Party B must be told the media ID out of band - it feeds the keyed
+        # start-location derivation, so a wrong one lands on the wrong offset.
+        # Pre-fill the default for the media type actually downloaded, the way
+        # Party A's _a_load() does: leaving an image ID sitting in the field
+        # after downloading a WAV derives a bogus offset and reports Wrong
+        # Start Location on what is supposed to be the positive case. B can
+        # still overwrite it to demonstrate exactly that failure on purpose.
+        self.b_media_id.set(sess.DEFAULT_MEDIA_ID[media_type])
         # don't leave the previous file's verdict showing next to a new file
         self.b_verdict.clear()
         self.b_out.delete("1.0", "end")
