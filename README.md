@@ -166,6 +166,14 @@ Generated at runtime, and git-ignored: `gui_out/`, `a2_out/`, `keys/impostor_*.p
 
 ---
 
+## Ethics and Responsible Use
+
+Steganography is a dual-use technology. While this tool is designed for legitimate security purposes—protecting media integrity, verifying authenticity, and ensuring confidentiality—the same techniques can be misused. Malicious actors frequently use steganography to bypass Data Loss Prevention (DLP) systems, secretly exfiltrate sensitive data, or hide malware payloads within seemingly innocuous files. 
+
+We recognize these ethical implications. This application was built strictly for educational purposes and authorized verification workflows as part of the INF2005 coursework. It is intended to demonstrate cryptographic and steganographic principles responsibly and should not be used in environments where undocumented hidden data channels violate organizational security policies.
+
+---
+
 ## AI Use
 
 Generative AI was used selectively by team members during development, mainly for:

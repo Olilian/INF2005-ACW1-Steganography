@@ -343,9 +343,20 @@ class ProtectTab(ttk.Frame):
                                            cover_params.sampwidth, cover_params.framerate)
                            ).pack(side="left", padx=6)
 
+            row3 = ttk.Frame(self.compare_frame)
+            row3.pack(fill="x", padx=6, pady=(4, 0))
+            ttk.Label(row3, text="Diff (amplified x32):", width=16).pack(side="left")
+            
+            diff_wave = (stego_wave.astype(float) - cover_wave.astype(float)) * 32
+            wv3 = WaveformView(row3, color=theme.COLORS.get("warn", "red"))
+            wv3.pack(side="left", padx=4)
+            wv3.draw(diff_wave, peak=peak)
+
+            # amplified diff
             ttk.Label(self.compare_frame,
                      text="{:,} / {:,} bytes changed ({}%), max byte delta {} - low-byte-only "
-                          "embedding keeps this inaudible.".format(
+                          "embedding keeps this inaudible. The amplified diff above proves the "
+                          "payload exists.".format(
                               stats["changed_bytes"], stats["total_bytes"],
                               stats["percent_changed"], stats["max_byte_delta"])
                      ).pack(padx=6, pady=6, anchor="w")
