@@ -6,11 +6,12 @@ Mirrors the cases in tests/test_image_codec.py and tests/test_audio_codec.py:
 a positive protect + verify, tampering, wrong passphrase, wrong public key,
 the capacity check, the three payload sizes and the LSB 1-8 sweep.
 
-Nothing is pre-computed: every input (media ID, LSBs, passphrase, algorithm,
-message) is editable, each case protects a fresh in-memory copy of the cover
-with those values and verifies it, and clicking a log row shows exactly what
-went in and what came out - including the payload's nonce and timestamp,
-which differ on every run. Nothing is written into the repo, and the
+Cases use the app's standard parameters (media ID for the file type, 2 LSBs,
+the default passphrase and signature algorithm, the short message). Each case
+protects a fresh in-memory copy of the cover and verifies it; the panel under
+the buttons shows the exact parameters each case used, and clicking a log row
+shows its full inputs and outputs - including the payload's nonce and
+timestamp, which differ on every run. Nothing is written into the repo, and the
 session's replay memory is not touched.
 """
 from __future__ import annotations
@@ -28,8 +29,9 @@ import a2_crypto as a2
 
 from . import session as sess
 from . import theme
-from .widgets import FileLoadRow, ScrollableFrame, read_n_lsb
+from .widgets import FileLoadRow, ScrollableFrame
 
+N_LSB = 2
 AUTHENTIC = str(a2.VerdictCode.AUTHENTIC)
 BLOCKED = "Blocked (capacity check)"
 TAMPER_BYTES = 3000
@@ -66,10 +68,6 @@ class TestCasesTab(ttk.Frame):
         super().__init__(master)
         self.session = session
         self._media, self._path = "image", sess.SAMPLE_COVERS["image"]
-        self.media_id = tk.StringVar(value=sess.DEFAULT_MEDIA_ID["image"])
-        self.n_lsb = tk.IntVar(value=2)
-        self.passphrase = tk.StringVar(value=sess.DEFAULT_PASSPHRASE)
-        self.algo = tk.StringVar(value=a2.DEFAULT_SIGN_ALGO)
         self._jobs: list = []
         self._buttons: list = []
         self._records: dict = {}       # log row id -> everything that case used/produced
@@ -84,10 +82,9 @@ class TestCasesTab(ttk.Frame):
         c = theme.COLORS
 
         ttk.Label(body, text="The required image and audio test cases (same as "
-                             "tests/test_image_codec.py and tests/test_audio_codec.py). Every "
-                             "input below is editable - change any of them and re-run. Each case "
-                             "protects a fresh copy of the cover with those inputs and verifies "
-                             "it live; click a log row to see exactly what went in and came out.",
+                             "tests/test_image_codec.py and tests/test_audio_codec.py). Each case "
+                             "protects a fresh copy of the cover and verifies it live; the panel "
+                             "below the buttons shows the exact parameters each case used.",
                  foreground=c["muted"], wraplength=1080).pack(fill="x", padx=8, pady=(8, 4))
 
         cov = ttk.LabelFrame(body, text="Cover object (load an ORIGINAL file, not a stego file)")
@@ -96,50 +93,8 @@ class TestCasesTab(ttk.Frame):
                                   empty_text="", samples=True)
         self.loader.pack(fill="x")
 
-        inp = ttk.LabelFrame(body, text="Test inputs (editable - the cases use exactly these values)")
-        inp.pack(fill="x", padx=8, pady=6)
-        ttk.Label(inp, text="Media ID:").grid(row=0, column=0, sticky="e", padx=4, pady=4)
-        ttk.Entry(inp, textvariable=self.media_id, width=16).grid(row=0, column=1, sticky="w")
-        ttk.Label(inp, text="LSBs:").grid(row=0, column=2, sticky="e", padx=(12, 4))
-        ttk.Spinbox(inp, from_=1, to=8, textvariable=self.n_lsb, width=5).grid(
-            row=0, column=3, sticky="w")
-        ttk.Label(inp, text="Passphrase:").grid(row=0, column=4, sticky="e", padx=(12, 4))
-        ttk.Entry(inp, textvariable=self.passphrase, width=28).grid(row=0, column=5, sticky="w")
-        ttk.Label(inp, text="Signature:").grid(row=0, column=6, sticky="e", padx=(12, 4))
-        ttk.Combobox(inp, textvariable=self.algo, width=12, state="readonly",
-                     values=list(a2.SIGNERS)).grid(row=0, column=7, sticky="w")
-
-        ttk.Label(inp, text="Message:").grid(row=1, column=0, sticky="ne", padx=4, pady=4)
-        self.msg_text = tk.Text(inp, height=3, wrap="word", font=theme.mono_font(10),
-                                background=c["field"], foreground=c["text"],
-                                insertbackground=c["text"], relief="flat",
-                                highlightthickness=1, highlightbackground=c["border"])
-        self.msg_text.grid(row=1, column=1, columnspan=7, sticky="ew", pady=4)
-        self.msg_text.insert("1.0", sess.MESSAGE_PRESETS["short"]())
-        ttk.Button(inp, text="Reset to short preset", command=self._reset_message).grid(
-            row=1, column=8, sticky="n", padx=6, pady=4)
-        inp.columnconfigure(7, weight=1)
-        ttk.Label(inp, text="Payload sizes always uses the brief's short / large / custom "
-                            "messages, and the LSB sweep runs every depth from 1 to 8 - "
-                            "everything else uses the values above.",
-                  foreground=c["muted"]).grid(row=2, column=0, columnspan=9, sticky="w",
-                                              padx=4, pady=(0, 4))
-
-        tb = ttk.LabelFrame(body, text="Test cases")
-        tb.pack(fill="x", padx=8, pady=6)
-        for i, (key, label) in enumerate(CASES):
-            cell = ttk.Frame(tb)
-            cell.grid(row=i // 4, column=i % 4, padx=4, pady=4, sticky="ew")
-            b = ttk.Button(cell, text=label, command=lambda k=key: self._run([k]))
-            b.pack(fill="x")
-            self._buttons.append(b)
-            ttk.Label(cell, text=EXPECTED_CAPTION[key], foreground=c["muted"], anchor="center",
-                      font=theme.font(9)).pack(fill="x")
-        for col in range(4):
-            tb.columnconfigure(col, weight=1)
-
-        used = ttk.LabelFrame(body, text="Parameters used by this case (amber = different "
-                                         "from Test inputs, set by the case itself)")
+        used = ttk.LabelFrame(body, text="Parameters used by this case (amber = changed from "
+                                         "the standard parameters by this case)")
         used.pack(fill="x", padx=8, pady=6)
         self.used_title = tk.Label(used, text="Run a case to see the exact parameters it used.",
                                    anchor="w", background=c["bg"], foreground=c["muted"],
@@ -156,6 +111,19 @@ class TestCasesTab(ttk.Frame):
             self._used_values[name] = val
         used.columnconfigure(1, weight=1)
         used.columnconfigure(3, weight=1)
+
+        tb = ttk.LabelFrame(body, text="Test cases")
+        tb.pack(fill="x", padx=8, pady=6)
+        for i, (key, label) in enumerate(CASES):
+            cell = ttk.Frame(tb)
+            cell.grid(row=i // 4, column=i % 4, padx=4, pady=4, sticky="ew")
+            b = ttk.Button(cell, text=label, command=lambda k=key: self._run([k]))
+            b.pack(fill="x")
+            self._buttons.append(b)
+            ttk.Label(cell, text=EXPECTED_CAPTION[key], foreground=c["muted"], anchor="center",
+                      font=theme.font(9)).pack(fill="x")
+        for col in range(4):
+            tb.columnconfigure(col, weight=1)
 
         actions = ttk.Frame(body)
         actions.pack(fill="x", padx=8, pady=4)
@@ -207,13 +175,8 @@ class TestCasesTab(ttk.Frame):
             messagebox.showerror("Load failed", "{}: {}".format(type(exc).__name__, exc))
             return
         self._media, self._path = media_type, path
-        self.media_id.set(sess.DEFAULT_MEDIA_ID[media_type])
         self.loader.set_loaded("Loaded: {}   ({}, {:,} units)".format(
             os.path.basename(path), codec.name, len(codec.read_samples(view))))
-
-    def _reset_message(self):
-        self.msg_text.delete("1.0", "end")
-        self.msg_text.insert("1.0", sess.MESSAGE_PRESETS["short"]())
 
     def _clear_log(self):
         self.log.delete(*self.log.get_children())
@@ -230,23 +193,16 @@ class TestCasesTab(ttk.Frame):
     def _run(self, keys):
         if self._jobs:
             return
-        n_lsb = read_n_lsb(self.n_lsb)
-        if n_lsb is None:
-            return
-        media_id, passphrase = self.media_id.get().strip(), self.passphrase.get()
-        message = self.msg_text.get("1.0", "end-1c")
-        if not media_id or not passphrase or not message:
-            messagebox.showwarning("Missing input",
-                                   "Media ID, passphrase and message all need a value.")
-            return
         m = self._media
+        media_id, n_lsb, passphrase = sess.DEFAULT_MEDIA_ID[m], N_LSB, sess.DEFAULT_PASSPHRASE
+        message = sess.MESSAGE_PRESETS["short"]()
         codec = self.session.codec_for(m)
         try:
             view = codec.load(self._path)
         except Exception as exc:
             messagebox.showerror("Cover failed to load", "{}: {}".format(type(exc).__name__, exc))
             return
-        algo = self.algo.get()
+        algo = a2.DEFAULT_SIGN_ALGO
         priv, pub, _pub_path = self.session.keys_for(algo)
         impostor = a2.load_public(self.session.impostor_public_path(algo))
         self._ctx = dict(media=m, codec=codec, view=view, cover_name=os.path.basename(self._path),
