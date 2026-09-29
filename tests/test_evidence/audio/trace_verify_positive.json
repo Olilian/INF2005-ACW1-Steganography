@@ -10,14 +10,14 @@
         "n_lsb": 2
       },
       "ok": true,
-      "ms": 1.401
+      "ms": 12.797
     },
     {
       "stage": "derive_secrets",
       "label": "HKDF re-derived location and message keys from passphrase",
       "detail": {},
       "ok": true,
-      "ms": 0.038
+      "ms": 0.094
     },
     {
       "stage": "derive_start",
@@ -28,7 +28,7 @@
         "n_lsb": 2
       },
       "ok": true,
-      "ms": 0.018
+      "ms": 0.07
     },
     {
       "stage": "magic_check",
@@ -38,7 +38,7 @@
         "got": "STG1"
       },
       "ok": true,
-      "ms": 0.034,
+      "ms": 0.084,
       "blob_len": 14,
       "blob_hex": "5354473101020000020e00000040",
       "blob_truncated": false
@@ -53,7 +53,7 @@
         "n_lsb": 2
       },
       "ok": true,
-      "ms": 0.008
+      "ms": 0.017
     },
     {
       "stage": "extract_body",
@@ -63,9 +63,9 @@
         "sig_bytes": 64
       },
       "ok": true,
-      "ms": 0.672,
+      "ms": 1.732,
       "blob_len": 96,
-      "blob_hex": "7b22636f7665725f68617368223a2265326636383564343238326231333262616432376332623438616439363337633937373865366331643664626230613931353034633336313132323130336263222c22656e63223a226165732d3235362d",
+      "blob_hex": "7b22636f7665725f68617368223a2237306135373938333330376466653666366163646366643431383263306539343235626461623230613364333964646266366264383031393735623133663365222c22656e63223a226165732d3235362d",
       "blob_truncated": false
     },
     {
@@ -76,9 +76,9 @@
         "public_fingerprint": "96e408b3103196f0"
       },
       "ok": true,
-      "ms": 0.233,
+      "ms": 0.33,
       "blob_len": 32,
-      "blob_hex": "1234215f964461e10b7befe46791a38c9845b796338fd82aff0ecf22c614dab0",
+      "blob_hex": "6cd3e9d06b89d50559ffe042d2c40b3908cd41db0f5c119f1e00e214b2a21c98",
       "blob_truncated": false
     },
     {
@@ -86,23 +86,23 @@
       "label": "Payload record parsed",
       "detail": {
         "media_id": "AUD-TEST-001",
-        "ts": "2026-09-29T14:53:16Z",
+        "ts": "2026-09-29T10:11:30Z",
         "enc": "aes-256-gcm",
         "n_lsb": 2
       },
       "ok": true,
-      "ms": 0.025
+      "ms": 0.052
     },
     {
       "stage": "compare_hash",
       "label": "Cover hash matches",
       "detail": {
-        "expected": "e2f685d4282b132bad27c2b48ad9637c...",
-        "recomputed": "e2f685d4282b132bad27c2b48ad9637c...",
+        "expected": "70a57983307dfe6f6acdcfd4182c0e94...",
+        "recomputed": "70a57983307dfe6f6acdcfd4182c0e94...",
         "hashed_bits_per_byte": 6
       },
       "ok": true,
-      "ms": 0.801
+      "ms": 9.344
     },
     {
       "stage": "decrypt",
@@ -112,7 +112,7 @@
         "message_bytes": 105
       },
       "ok": true,
-      "ms": 0.027
+      "ms": 0.117
     },
     {
       "stage": "verdict",
@@ -122,8 +122,8 @@
         "algo": "ed25519"
       },
       "ok": true,
-      "ms": 0.001
+      "ms": 0.004
     }
   ],
-  "total_ms": 3.257
+  "total_ms": 24.64
 }

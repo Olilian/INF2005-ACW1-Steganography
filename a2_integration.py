@@ -223,6 +223,24 @@ class AudioCodecAdapter:
         merged = self._ac.merge_embeddable_view(view[0], sampwidth, low_bytes)
         return (merged, view[1])
 
+    def digest_samples(self, view) -> bytes:
+        """
+        EVERY raw PCM byte, not just the embeddable ones.
+
+        read_samples() deliberately narrows to the low byte of each sample,
+        because that is all the carrier may touch without becoming audible.
+        Integrity has the opposite requirement: it must cover the whole file.
+        Hashing the embeddable view left every high byte unprotected, so an
+        attacker could rewrite the loud half of the audio - turning it to
+        noise - and still get an Authentic verdict, since the digest never
+        looked at those bytes. Returning the full array closes that.
+
+        The masked digest stays invariant across embedding: embedding only
+        writes the bottom n_lsb bits of low bytes, and stable_digest() masks
+        exactly those bits off every byte before hashing.
+        """
+        return view[0].tobytes()
+
     # -- extras the GUI uses, not part of the port --------------------------
     def compare(self, cover, stego) -> dict:
         return self._ac.compare_audio(cover[0], stego[0])

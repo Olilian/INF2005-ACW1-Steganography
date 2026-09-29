@@ -39,6 +39,32 @@ class Codec(Protocol):
         """Return a NEW view with `data` as its units - must not mutate `view`."""
         ...
 
+    # -- optional ------------------------------------------------------------
+    # A codec MAY also provide:
+    #
+    #     def digest_samples(self, view: CoverView) -> bytes
+    #
+    # the bytes the integrity hash should cover. It defaults to read_samples()
+    # and only needs implementing when the two differ.
+    #
+    # WHY THIS EXISTS (it is not decoration - it closed a real hole)
+    #     read_samples() answers "which bytes does the carrier address?".
+    #     The hash needs to answer "which bytes does integrity cover?". For
+    #     the image codec those are the same set, so nothing changes. For
+    #     WAV/PCM they are NOT: the audio codec only embeds into the low byte
+    #     of each multi-byte sample, because flipping a bit in a HIGH byte is
+    #     audible. Hashing read_samples() therefore left every high byte -
+    #     the perceptually dominant half of the file - outside the integrity
+    #     check, and an attacker who rewrote only high bytes could destroy
+    #     the audio while it still verified as Authentic.
+    #
+    #     Splitting the two questions fixes that without touching the
+    #     carrier: digest_samples() returns ALL the media's bytes, while
+    #     read_samples() keeps returning only the embeddable ones. The masked
+    #     digest stays invariant across embedding either way, because
+    #     embedding only ever writes the bottom n_lsb bits of embeddable
+    #     bytes and the mask clears exactly those.
+
 
 @runtime_checkable
 class Bitstream(Protocol):

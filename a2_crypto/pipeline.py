@@ -45,6 +45,17 @@ from .trace import NullTrace, Trace
 from .verdict import Verdict, VerdictCode
 
 
+def digest_source(codec: Codec, view: CoverView) -> bytes:
+    """
+    The bytes the integrity hash covers, which are not always the bytes the
+    carrier writes into - see the `digest_samples` note in ports.py. Codecs
+    that do not distinguish the two (the image codec, MemoryCodec) need not
+    implement it and fall back to read_samples() unchanged.
+    """
+    getter = getattr(codec, "digest_samples", None)
+    return getter(view) if getter is not None else codec.read_samples(view)
+
+
 @dataclass
 class ProtectResult:
     """What protect() hands back. `stego_view` goes straight to codec.save()."""
@@ -141,10 +152,12 @@ def protect(cover: CoverView, message: str | bytes, media_id: str, n_lsb: int,
 
     # -- 2. stable-representation hash --------------------------------------
     strength = tamper_detection_strength(n_lsb)
-    digest = stable_digest(samples, n_lsb)
+    hashed = digest_source(codec, cover)
+    digest = stable_digest(hashed, n_lsb)
     t.add("hash", "Stable digest over LSB-masked cover",
           {"algo": config.HASH_NAME, "n_lsb": n_lsb,
-           "bits_hashed_per_byte": strength["bits_hashed_per_byte"]},
+           "bits_hashed_per_byte": strength["bits_hashed_per_byte"],
+           "bytes_hashed": len(hashed), "embeddable_units": len(samples)},
           blob=digest)
     if not strength["detects_content_tampering"]:
         t.add("hash", "WARNING: no tamper detection at this depth",
@@ -204,7 +217,9 @@ def protect(cover: CoverView, message: str | bytes, media_id: str, n_lsb: int,
            "percent_of_cover": round(100.0 * changed / max(len(samples), 1), 4)})
 
     # The identity that makes the whole scheme work - assert it, do not hope.
-    post = stable_digest(stego_samples, n_lsb)
+    # Recomputed from the stego VIEW, not from stego_samples, so it exercises
+    # the same digest source the verifier will use.
+    post = stable_digest(digest_source(codec, stego_view), n_lsb)
     t.add("verify_invariant", "Stable digest unchanged by embedding",
           {"match": post == digest}, ok=(post == digest))
 
@@ -336,7 +351,7 @@ def _verify_inner(stego, media_id, n_lsb, passphrase, pub, *, codec, bits, algo,
            "n_lsb": payload.n_lsb})
 
     # -- verdict 6: cover hash -----------------------------------------------
-    recomputed = stable_digest(samples, payload.n_lsb)
+    recomputed = stable_digest(digest_source(codec, stego), payload.n_lsb)
     hash_ok = recomputed.hex() == payload.cover_hash
     t.add("compare_hash", "Cover hash {}".format("matches" if hash_ok else "MISMATCH"),
           {"expected": payload.cover_hash[:32] + "...",
