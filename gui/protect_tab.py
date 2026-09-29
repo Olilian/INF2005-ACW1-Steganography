@@ -17,8 +17,8 @@ from a2_crypto import Trace
 from . import session as sess
 from . import theme
 from .session import CoverHandle, SessionState
-from .widgets import (AudioPlayButton, CapacityBar, ImagePreview, ScrollableFrame,
-                      WaveformView, read_n_lsb)
+from .widgets import (AudioPlayButton, CapacityBar, FileLoadRow, ImagePreview,
+                      ScrollableFrame, WaveformView, read_n_lsb)
 
 MONO = theme.mono_font(10)
 
@@ -39,13 +39,9 @@ class ProtectTab(ttk.Frame):
 
         cov = ttk.LabelFrame(body, text="1. Cover object (FR1/FR2)")
         cov.pack(fill="x", padx=8, pady=6)
-        ttk.Button(cov, text="Load PNG...", command=lambda: self._load("image")).grid(
-            row=0, column=0, padx=6, pady=6)
-        ttk.Button(cov, text="Load WAV...", command=lambda: self._load("audio")).grid(
-            row=0, column=1, padx=6)
-        self.cover_info = tk.StringVar(value="(nothing loaded)")
-        ttk.Label(cov, textvariable=self.cover_info, foreground=theme.COLORS["muted"]).grid(
-            row=0, column=2, sticky="w", padx=10)
+        self.loader = FileLoadRow(cov, self._load, dialog_title="Select cover", samples=True,
+                                  empty_text="No cover loaded yet - load a PNG/WAV or use a sample.")
+        self.loader.pack(fill="x")
 
         msg = ttk.LabelFrame(body, text="2. Hidden message (FR3 payload content)")
         msg.pack(fill="x", padx=8, pady=6)
@@ -124,11 +120,7 @@ class ProtectTab(ttk.Frame):
         self._on_message_change()
 
     # -------------------------------------------------------------- cover
-    def _load(self, media_type: str):
-        ft = [("PNG", "*.png")] if media_type == "image" else [("WAV", "*.wav")]
-        path = filedialog.askopenfilename(title="Select cover", filetypes=ft)
-        if not path:
-            return
+    def _load(self, media_type: str, path: str):
         codec = self.session.codec_for(media_type)
         try:
             view = codec.load(path)
@@ -137,7 +129,7 @@ class ProtectTab(ttk.Frame):
             return
         self.cover = CoverHandle(media_type, codec, view, os.path.basename(path))
         units = len(codec.read_samples(view))
-        self.cover_info.set("{}  ({}, {:,} units)".format(
+        self.loader.set_loaded("Loaded: {}   ({}, {:,} units)".format(
             self.cover.source, codec.name, units))
         self.media_id.set(sess.DEFAULT_MEDIA_ID[media_type])
         self.save_btn.configure(state="disabled")

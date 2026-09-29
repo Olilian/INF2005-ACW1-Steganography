@@ -38,7 +38,7 @@ Sample covers for a quick demo: `tests/samples/image/chelsea_cat.png` and
 |---|---|
 | **Protect** | Load a PNG/WAV cover, choose a message (short / large / custom / oversized / free text), LSB depth, media ID, passphrase and signature algorithm, then embed. A live capacity bar blocks payloads that don't fit. The before/after comparison shows an amplified image diff or audio waveforms with playback. |
 | **Verify** | Load a stego file (or take the last Protect result), enter the same media ID, passphrase, LSB count and public key, and get a colour-coded verdict with the recovered message and payload record. |
-| **Party A → B demo** | Party A protects a file and "emails" it to `gui_out/party_a_sent/`. Party B downloads it to `gui_out/party_b_downloads/` and verifies it using only what A tells them separately (media ID, passphrase, LSB count, public key). |
+| **Image & audio test cases** | Runs the required test cases (positive, tampered, wrong passphrase, wrong key, capacity check, short/large/custom payloads, LSB 1–8 sweep) on a PNG or WAV cover and logs expected vs actual, matching `tests/test_image_codec.py` and `tests/test_audio_codec.py`. |
 | **Attack simulation** | Applies one attack at a time to the last protected file, re-verifies it, and logs the expected verdict against the actual one. |
 
 The **media ID, passphrase and LSB count must match** between Protect and Verify.
@@ -46,6 +46,18 @@ If any of them differs, the derived start location moves and the verdict is
 *Wrong Start Location*.
 
 A light/dark theme toggle is in the top-right corner.
+
+### Sending a file from Party A to Party B (email)
+
+1. **Party A:** in **Protect**, embed the message, then click **Save stego to file…**.
+2. **Party A:** email the saved PNG/WAV as a normal attachment. Separately, tell
+   Party B the media ID, passphrase, LSB count and signature algorithm.
+3. **Party B:** download the attachment, then in **Verify** click
+   **Load stego PNG/WAV…**, enter the details from Party A and click **Verify**.
+
+Only the file travels by email. Send it as a file attachment from a desktop
+mail client: messaging apps and phone "photo" sending often compress images,
+which destroys the hidden bits.
 
 ### Verdicts
 
@@ -87,7 +99,7 @@ python -m a2_crypto.selftest                 # 18 crypto-layer cases  -> ALL CHE
 python a2_integration.py                     # real PNG + WAV end to end -> Integration OK
 python bitstream/test_bitstream_engine.py    # bitstream engine        -> All tests passed
 python tests/test_image_codec.py             # image + LSB 1-8 sweep   -> All 8 depths Authentic
-python tests/test_audio_codec.py             # audio cases             -> All cases passed
+python tests/test_audio_codec.py             # audio + LSB 1-8 sweep   -> All 8 depths Authentic
 python -m steganalysis.chi_square_attack     # steganalysis report     -> report.txt
 ```
 

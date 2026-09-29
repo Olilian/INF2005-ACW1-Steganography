@@ -24,11 +24,12 @@ maintained.
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 
 import numpy as np
 from PIL import Image, ImageTk
 
+from . import session as sess
 from . import theme
 
 try:
@@ -72,6 +73,53 @@ def read_n_lsb(var) -> int | None:
 
 
 # =============================================================================
+# file load row - the same PNG/WAV picker in every tab
+# =============================================================================
+class FileLoadRow(ttk.Frame):
+    """Load PNG... / Load WAV... [/ Use sample image / Use sample audio]
+    [/ extra buttons], with a bold status line underneath: amber until a
+    file is loaded, green once one is.
+
+    on_file(media_type, path) does the actual loading and should call
+    set_loaded() on success."""
+
+    def __init__(self, master, on_file, dialog_title: str, empty_text: str,
+                 samples: bool = False, extra=()):
+        super().__init__(master)
+        self._on_file = on_file
+        self._title = dialog_title
+        buttons = ttk.Frame(self)
+        buttons.pack(fill="x", pady=(6, 2))
+        ttk.Button(buttons, text="Load PNG...",
+                   command=lambda: self._pick("image")).pack(side="left", padx=(6, 0))
+        ttk.Button(buttons, text="Load WAV...",
+                   command=lambda: self._pick("audio")).pack(side="left", padx=(6, 0))
+        if samples:
+            ttk.Button(buttons, text="Use sample image",
+                       command=lambda: on_file("image", sess.SAMPLE_COVERS["image"])).pack(
+                side="left", padx=(18, 0))
+            ttk.Button(buttons, text="Use sample audio",
+                       command=lambda: on_file("audio", sess.SAMPLE_COVERS["audio"])).pack(
+                side="left", padx=(6, 0))
+        for i, (label, command) in enumerate(extra):
+            ttk.Button(buttons, text=label, command=command).pack(
+                side="left", padx=(18 if i == 0 else 6, 0))
+        self.status = tk.Label(self, text=empty_text, anchor="w", justify="left",
+                               background=theme.COLORS["bg"], foreground=theme.COLORS["warn"],
+                               font=theme.font(11, "bold"))
+        self.status.pack(fill="x", padx=6, pady=(2, 6))
+
+    def _pick(self, media_type: str):
+        ft = [("PNG", "*.png")] if media_type == "image" else [("WAV", "*.wav")]
+        path = filedialog.askopenfilename(title=self._title, filetypes=ft)
+        if path:
+            self._on_file(media_type, path)
+
+    def set_loaded(self, text: str):
+        self.status.configure(text=text, foreground=theme.COLORS["good"])
+
+
+# =============================================================================
 # scrollable container
 # =============================================================================
 class ScrollableFrame(ttk.Frame):
@@ -98,14 +146,17 @@ class ScrollableFrame(ttk.Frame):
         self.body = ttk.Frame(canvas)
         window = canvas.create_window((0, 0), window=self.body, anchor="nw")
 
-        # No width forcing here (unlike the old vertical-only version) - the
-        # body is left free to grow past the canvas's own width when its
-        # content needs it, which is what makes the horizontal scrollbar
-        # able to reach that overflow instead of it just being clipped.
-        # When content is narrower than the canvas it just leaves blank
-        # canvas-colored space, which is invisible since the colors match.
-        self.body.bind("<Configure>",
-                       lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        # The body is sized to max(visible area, what its content needs):
+        # never smaller than the window, so panels stretch and expand=True
+        # logs/text boxes grow to fill it, but free to get bigger, so the
+        # scrollbars can still reach overflow in a small window.
+        # Once the item has an explicit size, Tk sends no event when the
+        # content's requested size changes later (a preview appearing, rows
+        # added), so a light poll re-checks it.
+        self._canvas, self._window, self._size = canvas, window, None
+        canvas.bind("<Configure>", lambda _e: self._fit())
+        self.body.bind("<Configure>", lambda _e: self._fit())
+        self._poll()
 
         def _wheel(event):
             if event.num == 4:
@@ -147,6 +198,21 @@ class ScrollableFrame(ttk.Frame):
 
         canvas.bind("<Enter>", _bind_wheel)
         canvas.bind("<Leave>", _unbind_wheel)
+
+    def _fit(self):
+        c = self._canvas
+        size = (max(c.winfo_width(), self.body.winfo_reqwidth()),
+                max(c.winfo_height(), self.body.winfo_reqheight()))
+        if size != self._size:
+            self._size = size
+            c.itemconfigure(self._window, width=size[0], height=size[1])
+            c.configure(scrollregion=(0, 0) + size)
+
+    def _poll(self):
+        if not self.winfo_exists():   # tab rebuilt by the theme toggle
+            return
+        self._fit()
+        self.after(250, self._poll)
 
 
 # =============================================================================

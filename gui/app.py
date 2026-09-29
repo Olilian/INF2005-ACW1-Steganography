@@ -1,6 +1,6 @@
 """
-gui/app.py - the production GUI window: Protect, Verify, Exchange (party A/B)
-and Attack tabs sharing one SessionState.
+gui/app.py - the production GUI window: Protect, Verify, Attack and image/audio
+test-case tabs sharing one SessionState.
 """
 from __future__ import annotations
 
@@ -14,9 +14,9 @@ import a2_crypto as a2
 
 from . import icons, theme
 from .attack_tab import AttackTab
-from .exchange_tab import ExchangeTab
 from .protect_tab import ProtectTab
 from .session import SessionState
+from .cases_tab import TestCasesTab
 from .verify_tab import VerifyTab
 from .widgets import PLAYBACK_AVAILABLE
 
@@ -25,7 +25,7 @@ API_VERSION_EXPECTED = "1.0"
 TABS = (
     ("protect", "  Protect  ", lambda nb, app: ProtectTab(nb, app.session, app.go_to_verify)),
     ("verify", "  Verify  ", lambda nb, app: VerifyTab(nb, app.session)),
-    ("exchange", "  Party A -> B demo  ", lambda nb, app: ExchangeTab(nb, app.session)),
+    ("cases", "  Image & audio test cases  ", lambda nb, app: TestCasesTab(nb, app.session)),
     ("attack", "  Attack simulation  ", lambda nb, app: AttackTab(nb, app.session)),
 )
 

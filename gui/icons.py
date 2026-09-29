@@ -99,7 +99,7 @@ def window_icon(size: int = 64, color: str = "#2563eb") -> Image.Image:
 
 
 def tab_icon(kind: str, size: int = 20, color: str = "#1d4ed8") -> Image.Image:
-    """kind: 'protect' | 'verify' | 'exchange' | 'attack'."""
+    """kind: 'protect' | 'verify' | 'attack' | 'cases'."""
     img, d, big = _canvas(size)
     m = big * 0.12
     lw = max(2, int(big * 0.10))
@@ -128,13 +128,12 @@ def tab_icon(kind: str, size: int = 20, color: str = "#1d4ed8") -> Image.Image:
         d.line([big * 0.32, big * 0.52, big * 0.46, big * 0.66], fill=color, width=lw)
         d.line([big * 0.46, big * 0.66, big * 0.72, big * 0.36], fill=color, width=lw)
 
-    elif kind == "exchange":  # envelope
-        top, bottom = m + big * 0.08, big - m - big * 0.08
-        d.rounded_rectangle([m, top, big - m, bottom], radius=big * 0.05,
+    elif kind == "cases":  # clipboard with a tick
+        d.rounded_rectangle([m * 1.3, m, big - m * 1.3, big - m], radius=big * 0.08,
                             outline=color, width=lw)
-        d.line([m + lw * 0.5, top + lw * 0.3, big / 2, big * 0.56], fill=color, width=lw)
-        d.line([big / 2, big * 0.56, big - m - lw * 0.5, top + lw * 0.3],
-              fill=color, width=lw)
+        d.line([big * 0.38, m, big * 0.62, m], fill=color, width=lw * 2)
+        d.line([big * 0.32, big * 0.55, big * 0.46, big * 0.69], fill=color, width=lw)
+        d.line([big * 0.46, big * 0.69, big * 0.70, big * 0.40], fill=color, width=lw)
 
     elif kind == "attack":  # warning triangle
         points = [(big / 2, m), (big - m, big - m), (m, big - m)]

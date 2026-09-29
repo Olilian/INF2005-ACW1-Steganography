@@ -4,8 +4,7 @@ gui/session.py - state and helpers shared by every tab of the production GUI.
 One SessionState is created by the App and handed to each tab. It owns the
 codec/bitstream adapters (the same ones a2_integration.py and
 a2_debug_gui.py use), the demo keypairs, and the "last result" pointers that
-let one tab hand its output to another (e.g. Protect -> Verify, or
-Party A's send -> Party B's inbox).
+let one tab hand its output to another (e.g. Protect -> Verify).
 
 No Tkinter imports here - this module is UI-framework-agnostic so it stays
 easy to unit test on its own.
@@ -21,8 +20,10 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KEYS_DIR = os.path.join(HERE, "keys")
 TESTDATA_DIR = os.path.join(HERE, "a2_crypto", "testdata")
 OUT_DIR = os.path.join(HERE, "gui_out")
-OUTBOX_DIR = os.path.join(OUT_DIR, "party_a_sent")       # A's "sent mail"
-INBOX_DIR = os.path.join(OUT_DIR, "party_b_downloads")    # B's "downloads"
+SAMPLE_COVERS = {
+    "image": os.path.join(HERE, "tests", "samples", "image", "chelsea_cat.png"),
+    "audio": os.path.join(HERE, "tests", "samples", "audio", "sample_cover.wav"),
+}
 
 DEFAULT_MEDIA_ID = {"image": "IMG-0007", "audio": "AUD-0007"}
 DEFAULT_PASSPHRASE = "team-P1-4-shared-passphrase"
@@ -71,8 +72,6 @@ class SessionState:
 
     def __init__(self):
         os.makedirs(KEYS_DIR, exist_ok=True)
-        os.makedirs(OUTBOX_DIR, exist_ok=True)
-        os.makedirs(INBOX_DIR, exist_ok=True)
 
         self.bits = A1BitstreamAdapter()
         self.image_codec = ImageCodecAdapter()

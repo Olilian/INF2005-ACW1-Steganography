@@ -17,8 +17,8 @@ from a2_crypto import Trace
 from . import session as sess
 from . import theme
 from .session import CoverHandle, SessionState
-from .widgets import (AudioPlayButton, ImagePreview, ScrollableFrame, VerdictBanner,
-                      WaveformView, read_n_lsb)
+from .widgets import (AudioPlayButton, FileLoadRow, ImagePreview, ScrollableFrame,
+                      VerdictBanner, WaveformView, read_n_lsb)
 
 MONO = theme.mono_font(10)
 
@@ -38,17 +38,11 @@ class VerifyTab(ttk.Frame):
 
         src = ttk.LabelFrame(body, text="1. Stego object under test (FR8 extraction)")
         src.pack(fill="x", padx=8, pady=6)
-        ttk.Button(src, text="Load stego PNG...",
-                  command=lambda: self._load_file("image")).grid(row=0, column=0, padx=6, pady=6)
-        ttk.Button(src, text="Load stego WAV...",
-                  command=lambda: self._load_file("audio")).grid(row=0, column=1, padx=6)
-        ttk.Button(src, text="Use last Protect result ->",
-                  command=self.load_from_protect).grid(row=0, column=2, padx=6)
-        self.src_info = tk.StringVar(value="No file loaded yet - click one of the buttons above.")
-        self.src_label = tk.Label(src, textvariable=self.src_info, foreground=theme.COLORS["warn"],
-                                  background=theme.COLORS["bg"], font=theme.font(11, "bold"),
-                                  anchor="w")
-        self.src_label.grid(row=1, column=0, columnspan=4, sticky="ew", padx=6, pady=(2, 6))
+        self.loader = FileLoadRow(src, self._load_file, dialog_title="Select stego object",
+                                  empty_text="No stego file loaded yet - load a PNG/WAV or use "
+                                             "the last Protect result.",
+                                  extra=[("Use last Protect result ->", self.load_from_protect)])
+        self.loader.grid(row=0, column=0, columnspan=4, sticky="ew")
         self.play_holder = ttk.Frame(src)
         self.play_holder.grid(row=2, column=0, columnspan=4, sticky="w", padx=6, pady=(0, 2))
         self.preview_frame = ttk.Frame(src)
@@ -105,11 +99,7 @@ class VerifyTab(ttk.Frame):
         self.recovered.pack(fill="both", expand=True)
 
     # ------------------------------------------------------------------ src
-    def _load_file(self, media_type: str):
-        ft = [("PNG", "*.png")] if media_type == "image" else [("WAV", "*.wav")]
-        path = filedialog.askopenfilename(title="Select stego object", filetypes=ft)
-        if not path:
-            return
+    def _load_file(self, media_type: str, path: str):
         codec = self.session.codec_for(media_type)
         try:
             view = codec.load(path)
@@ -117,6 +107,8 @@ class VerifyTab(ttk.Frame):
             messagebox.showerror("Load failed", "{}: {}".format(type(exc).__name__, exc))
             return
         self._set_stego(CoverHandle(media_type, codec, view, os.path.basename(path)))
+        # same default Protect fills in for this media type (still editable)
+        self.media_id.set(sess.DEFAULT_MEDIA_ID[media_type])
 
     def load_from_protect(self):
         if self.session.last_protect_stego is None:
@@ -161,9 +153,8 @@ class VerifyTab(ttk.Frame):
             wv.pack(side="left")
             wv.draw(stego.codec.waveform(stego.view))
 
-        self.src_info.set("Loaded: {}   ({}, {})".format(
+        self.loader.set_loaded("Loaded: {}   ({}, {})".format(
             stego.source, stego.codec.name, detail))
-        self.src_label.configure(foreground=theme.COLORS["good"])
 
     def _pick_pub(self):
         path = filedialog.askopenfilename(title="Public key", filetypes=[("PEM", "*.pem")])

@@ -58,7 +58,7 @@ class AttackTab(ttk.Frame):
 
         ttk.Label(body, text="Run Protect first, then load its result here and try each "
                              "attack. Every button mutates an in-memory copy of the clean "
-                             "stego - the file on disk from Protect/Exchange is untouched.",
+                             "stego - the file saved from Protect is untouched.",
                  foreground=theme.COLORS["muted"], wraplength=1080).pack(fill="x", padx=8, pady=(8, 4))
 
         top = ttk.Frame(body)
@@ -110,6 +110,10 @@ class AttackTab(ttk.Frame):
                      font=theme.font(9), justify="center").pack(fill="x")
         for c in range(4):
             tam.columnconfigure(c, weight=1)
+
+        actions = ttk.Frame(body)
+        actions.pack(fill="x", padx=8, pady=4)
+        ttk.Button(actions, text="Clear log", command=self._clear_log).pack(side="left")
 
         self.verdict = VerdictBanner(body)
         self.verdict.pack(fill="x", padx=8, pady=4)
@@ -256,6 +260,10 @@ class AttackTab(ttk.Frame):
 
     def t_reset(self):
         self._restore()
+
+    def _clear_log(self):
+        self.log.delete(*self.log.get_children())
+        self.verdict.clear()
 
     # -------------------------------------------------------------- verify
     def _verify(self):
