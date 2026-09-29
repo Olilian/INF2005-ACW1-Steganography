@@ -1,0 +1,129 @@
+{
+  "name": "audio_verify",
+  "steps": [
+    {
+      "stage": "capacity",
+      "label": "Stego capacity measured",
+      "detail": {
+        "units": 1001546,
+        "capacity_bits": 2003092,
+        "n_lsb": 2
+      },
+      "ok": true,
+      "ms": 1.401
+    },
+    {
+      "stage": "derive_secrets",
+      "label": "HKDF re-derived location and message keys from passphrase",
+      "detail": {},
+      "ok": true,
+      "ms": 0.038
+    },
+    {
+      "stage": "derive_start",
+      "label": "Start offset re-derived - no stored hint was read",
+      "detail": {
+        "start_unit": 435973,
+        "media_id": "AUD-TEST-001",
+        "n_lsb": 2
+      },
+      "ok": true,
+      "ms": 0.018
+    },
+    {
+      "stage": "magic_check",
+      "label": "Magic bytes at derived offset: present",
+      "detail": {
+        "expected": "STG1",
+        "got": "STG1"
+      },
+      "ok": true,
+      "ms": 0.034,
+      "blob_len": 14,
+      "blob_hex": "5354473101020000020e00000040",
+      "blob_truncated": false
+    },
+    {
+      "stage": "header",
+      "label": "Header parsed",
+      "detail": {
+        "payload_len": 526,
+        "sig_len": 64,
+        "version": 1,
+        "n_lsb": 2
+      },
+      "ok": true,
+      "ms": 0.008
+    },
+    {
+      "stage": "extract_body",
+      "label": "Payload and signature extracted",
+      "detail": {
+        "payload_bytes": 526,
+        "sig_bytes": 64
+      },
+      "ok": true,
+      "ms": 0.672,
+      "blob_len": 96,
+      "blob_hex": "7b22636f7665725f68617368223a2265326636383564343238326231333262616432376332623438616439363337633937373865366331643664626230613931353034633336313132323130336263222c22656e63223a226165732d3235362d",
+      "blob_truncated": false
+    },
+    {
+      "stage": "verify_sig",
+      "label": "Signature VALID",
+      "detail": {
+        "algo": "ed25519",
+        "public_fingerprint": "96e408b3103196f0"
+      },
+      "ok": true,
+      "ms": 0.233,
+      "blob_len": 32,
+      "blob_hex": "1234215f964461e10b7befe46791a38c9845b796338fd82aff0ecf22c614dab0",
+      "blob_truncated": false
+    },
+    {
+      "stage": "unpack",
+      "label": "Payload record parsed",
+      "detail": {
+        "media_id": "AUD-TEST-001",
+        "ts": "2026-09-29T14:53:16Z",
+        "enc": "aes-256-gcm",
+        "n_lsb": 2
+      },
+      "ok": true,
+      "ms": 0.025
+    },
+    {
+      "stage": "compare_hash",
+      "label": "Cover hash matches",
+      "detail": {
+        "expected": "e2f685d4282b132bad27c2b48ad9637c...",
+        "recomputed": "e2f685d4282b132bad27c2b48ad9637c...",
+        "hashed_bits_per_byte": 6
+      },
+      "ok": true,
+      "ms": 0.801
+    },
+    {
+      "stage": "decrypt",
+      "label": "Hidden message decrypted",
+      "detail": {
+        "enc": "aes-256-gcm",
+        "message_bytes": 105
+      },
+      "ok": true,
+      "ms": 0.027
+    },
+    {
+      "stage": "verdict",
+      "label": "AUTHENTIC",
+      "detail": {
+        "start_unit": 435973,
+        "algo": "ed25519"
+      },
+      "ok": true,
+      "ms": 0.001
+    }
+  ],
+  "total_ms": 3.257
+}

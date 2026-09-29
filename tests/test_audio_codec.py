@@ -13,6 +13,7 @@ import sys
 import wave
 
 import numpy as np
+from PIL import Image, ImageDraw
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
@@ -34,6 +35,8 @@ IMPOSTOR_PUB_PATH = os.path.join(KEYS_DIR, "impostor_public.pem")
 MEDIA_ID = "AUD-TEST-001"
 N_LSB = 2
 PASSPHRASE = "team-P1-4-shared-passphrase"
+LSB_DEPTHS = [1, 2, 3, 4, 5, 6, 7, 8]
+SWEEP_REPORT_PATH = os.path.join(EVIDENCE_DIR, "audio_lsb_sweep.txt")
 
 SHORT_MESSAGE = (
     "Explain how steganography can be used to embed hidden verification "
@@ -77,6 +80,28 @@ def _make_tiny_wav(path, n_frames=4, sampwidth=2, framerate=8000):
         wf.writeframes(np.zeros(n_frames, dtype=np.int16).tobytes())
 
 
+def _save_waveform_compare(cover_wave, stego_wave, path, n_samples=2000):
+    """Cover vs stego waveform, drawn with Pillow so the evidence image is
+    always produced (the previous matplotlib version silently skipped it
+    when matplotlib wasn't installed)."""
+    width, panel_h, pad = 1000, 200, 24
+    img = Image.new("RGB", (width, 2 * panel_h), "white")
+    d = ImageDraw.Draw(img)
+    cover, stego = cover_wave[:n_samples], stego_wave[:n_samples]
+    peak = float(max(1, np.abs(cover).max(), np.abs(stego).max()))
+    for i, (title, wave) in enumerate((("Cover (first {} samples)", cover),
+                                       ("Stego (first {} samples)", stego))):
+        top = i * panel_h
+        mid = top + pad + (panel_h - pad) / 2
+        half = (panel_h - pad) / 2 - 4
+        d.text((8, top + 4), title.format(len(wave)), fill="black")
+        d.line([(0, mid), (width, mid)], fill="#dddddd")
+        pts = [(x * width / max(1, len(wave) - 1), mid - float(s) / peak * half)
+               for x, s in enumerate(wave)]
+        d.line(pts, fill="#1f77b4", width=1)
+    img.save(path)
+
+
 def run_required_cases(codec, bits, priv, pub, impostor_pub, cover):
     print("== Setup ==")
     print(f"Using {COVER_PATH}")
@@ -110,24 +135,9 @@ def run_required_cases(codec, bits, priv, pub, impostor_pub, cover):
     stats = codec.compare(cover, stego_view)
     print("Compare stats:", stats)
 
-    try:
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-
-        cover_wave = codec.waveform(cover)
-        stego_wave = codec.waveform(stego_view)
-        fig, axes = plt.subplots(2, 1, figsize=(10, 4), sharex=True)
-        axes[0].plot(cover_wave[:2000])
-        axes[0].set_title("Cover (first 2000 samples)")
-        axes[1].plot(stego_wave[:2000])
-        axes[1].set_title("Stego (first 2000 samples)")
-        fig.tight_layout()
-        waveform_path = os.path.join(EVIDENCE_DIR, "audio_waveform_compare.png")
-        fig.savefig(waveform_path)
-        print("Saved waveform comparison ->", waveform_path)
-    except ImportError:
-        print("matplotlib not installed, skipping waveform plot (stats above still cover this case)")
+    waveform_path = os.path.join(EVIDENCE_DIR, "audio_waveform_compare.png")
+    _save_waveform_compare(codec.waveform(cover), codec.waveform(stego_view), waveform_path)
+    print("Saved waveform comparison ->", waveform_path)
 
     print("\n== Negative case: tampering (content changed after signing) ==")
     tampered_view = codec.load(stego_path)
@@ -164,9 +174,10 @@ def run_required_cases(codec, bits, priv, pub, impostor_pub, cover):
     try:
         a2.protect(tiny_cover, SHORT_MESSAGE, MEDIA_ID, N_LSB, PASSPHRASE, priv,
                   codec=codec, bits=bits, media_type="audio")
-        print("UNEXPECTED: capacity check did not fail")
     except a2.CapacityError as exc:
         print("Correctly rejected:", exc)
+    else:
+        raise AssertionError("Capacity check did not reject a payload larger than the cover")
 
     print("\n== Required case: varying payload sizes ==")
     for label, message in (("short", SHORT_MESSAGE), ("large", LARGE_MESSAGE), ("custom", CUSTOM_MESSAGE)):
@@ -183,6 +194,35 @@ def run_required_cases(codec, bits, priv, pub, impostor_pub, cover):
     print("\nAll required audio test cases passed.")
 
 
+def run_lsb_sweep(codec, bits, priv, pub, cover):
+    """Selectable LSB depth 1-8 on audio, mirroring the image sweep. Only the
+    results table is saved (not 8 stego WAVs at 2 MB each)."""
+    lines = ["== LSB depth sweep (1-8): demonstrates selectable bit depth ==",
+             f"{'n_lsb':>5} | {'usable_bits':>11} | {'changed_bytes':>13} | {'% changed':>9} | "
+             f"{'max_delta':>9} | verdict",
+             "-" * 72]
+    print("\n\n" + "\n".join(lines))
+
+    for n_lsb in LSB_DEPTHS:
+        rep = a2.capacity_report(codec, cover, n_lsb, SHORT_MESSAGE)
+        result = a2.protect(cover, SHORT_MESSAGE, "AUD-LSB-SWEEP", n_lsb, PASSPHRASE, priv,
+                            codec=codec, bits=bits, media_type="audio")
+        stats = codec.compare(cover, result.stego_view)
+        v = a2.verify(result.stego_view, "AUD-LSB-SWEEP", n_lsb, PASSPHRASE, pub,
+                      codec=codec, bits=bits)
+        line = (f"{n_lsb:>5} | {rep['usable_bits']:>11,} | {stats['changed_bytes']:>13,} | "
+                f"{stats['percent_changed']:>8}% | {stats['max_byte_delta']:>9} | {v.code}")
+        print(line)
+        lines.append(line)
+        assert v.code == VerdictCode.AUTHENTIC, f"n_lsb={n_lsb} failed round-trip"
+
+    lines.append(f"\nAll {len(LSB_DEPTHS)} depths verified Authentic.")
+    with open(SWEEP_REPORT_PATH, "w") as f:
+        f.write("\n".join(lines) + "\n")
+    print(lines[-1])
+    print("Sweep table saved to:", SWEEP_REPORT_PATH)
+
+
 def main():
     os.makedirs(EVIDENCE_DIR, exist_ok=True)
     _ensure_keys()
@@ -195,6 +235,7 @@ def main():
     cover = codec.load(COVER_PATH)
 
     run_required_cases(codec, bits, priv, pub, impostor_pub, cover)
+    run_lsb_sweep(codec, bits, priv, pub, cover)
 
 
 if __name__ == "__main__":

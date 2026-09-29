@@ -1,0 +1,13 @@
+== LSB depth sweep (1-8): demonstrates selectable bit depth ==
+n_lsb | usable_bits | changed_bytes | % changed | max_delta | verdict
+------------------------------------------------------------------------
+    1 |     262,144 |         2,414 |   0.1205% |         1 | Authentic
+    2 |     262,144 |         1,792 |   0.0895% |         3 | Authentic
+    3 |     262,146 |         1,410 |   0.0704% |         7 | Authentic
+    4 |     262,144 |         1,124 |   0.0561% |        15 | Authentic
+    5 |     262,145 |           935 |   0.0467% |        30 | Authentic
+    6 |     262,146 |           792 |   0.0395% |        61 | Authentic
+    7 |     262,150 |           684 |   0.0341% |       119 | Authentic
+    8 |     262,144 |           602 |   0.0301% |       232 | Authentic
+
+All 8 depths verified Authentic.

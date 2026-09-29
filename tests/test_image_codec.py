@@ -131,9 +131,10 @@ def run_required_cases(codec, bits, priv, pub, impostor_pub, cover):
     try:
         a2.protect(tiny_cover, SHORT_MESSAGE, MEDIA_ID, N_LSB, PASSPHRASE, priv,
                    codec=codec, bits=bits, media_type="image")
-        print("UNEXPECTED: capacity check did not fail")
     except a2.CapacityError as exc:
         print("Correctly rejected:", exc)
+    else:
+        raise AssertionError("Capacity check did not reject a payload larger than the cover")
 
     print("\n== Required case: varying payload sizes ==")
     for label, message in (("short", SHORT_MESSAGE), ("large", LARGE_MESSAGE), ("custom", CUSTOM_MESSAGE)):
