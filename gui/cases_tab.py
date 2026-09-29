@@ -52,6 +52,8 @@ EXPECTED_CAPTION = {
     "sizes": "-> Authentic x3",
     "sweep": "-> Authentic x8",
 }
+PARAM_ROWS = ("Cover", "Media ID", "LSBs", "Signature algorithm", "Passphrase at protect",
+              "Passphrase at verify", "Signer's public key", "Verified with key", "Message")
 
 
 def _preview(text: str, n: int = 70) -> str:
@@ -136,6 +138,25 @@ class TestCasesTab(ttk.Frame):
         for col in range(4):
             tb.columnconfigure(col, weight=1)
 
+        used = ttk.LabelFrame(body, text="Parameters used by this case (amber = different "
+                                         "from Test inputs, set by the case itself)")
+        used.pack(fill="x", padx=8, pady=6)
+        self.used_title = tk.Label(used, text="Run a case to see the exact parameters it used.",
+                                   anchor="w", background=c["bg"], foreground=c["muted"],
+                                   font=theme.font(11, "bold"))
+        self.used_title.grid(row=0, column=0, columnspan=4, sticky="w", padx=6, pady=(4, 2))
+        self._used_values = {}
+        for i, name in enumerate(PARAM_ROWS):
+            r, col = 1 + i // 2, (i % 2) * 2
+            ttk.Label(used, text=name + ":").grid(row=r, column=col, sticky="e", padx=(6, 4),
+                                                  pady=1)
+            val = tk.Label(used, text="-", anchor="w", background=c["bg"], foreground=c["text"],
+                           font=theme.mono_font(10), padx=4)
+            val.grid(row=r, column=col + 1, sticky="w", pady=1)
+            self._used_values[name] = val
+        used.columnconfigure(1, weight=1)
+        used.columnconfigure(3, weight=1)
+
         actions = ttk.Frame(body)
         actions.pack(fill="x", padx=8, pady=4)
         run_all = ttk.Button(actions, text="Run all cases", style="Accent.TButton",
@@ -198,6 +219,11 @@ class TestCasesTab(ttk.Frame):
         self.log.delete(*self.log.get_children())
         self._records.clear()
         self._write_details("")
+        self.used_title.configure(text="Run a case to see the exact parameters it used.",
+                                  foreground=theme.COLORS["muted"])
+        for val in self._used_values.values():
+            val.configure(text="-", background=theme.COLORS["bg"],
+                          foreground=theme.COLORS["text"])
         self._set_status("Pick a case, or Run all cases.", "idle")
 
     # ------------------------------------------------------------- running
@@ -254,6 +280,7 @@ class TestCasesTab(ttk.Frame):
             rec = dict(case=dict(CASES)[key], expected="-", actual="ERROR",
                        detail="{}: {}".format(type(exc).__name__, exc), inputs=[], outputs=[])
         rec["match"] = rec["actual"] == rec["expected"]
+        rec["base"] = self._inputs(self._ctx, self._ctx["message"])
         self._run_total += 1
         self._run_matched += rec["match"]
         row = self.log.insert("", "end", values=(rec["case"], self._ctx["media"], rec["expected"],
@@ -263,6 +290,7 @@ class TestCasesTab(ttk.Frame):
         self.log.selection_set(row)    # show the newest case's details as it lands
         self.log.see(row)
         self._write_details(self._format(rec))
+        self._show_used(rec)
         self.after(10, self._step)
 
     def _finish(self):
@@ -277,6 +305,27 @@ class TestCasesTab(ttk.Frame):
         sel = self.log.selection()
         if sel and sel[0] in self._records:
             self._write_details(self._format(self._records[sel[0]]))
+            self._show_used(self._records[sel[0]])
+
+    def _show_used(self, rec):
+        c = theme.COLORS
+        values, base = dict(rec.get("inputs", [])), dict(rec.get("base", []))
+        changed = [n for n in PARAM_ROWS if n in values and values[n] != base.get(n)]
+        if changed:
+            summary = "changed: " + ", ".join(changed)
+        elif rec.get("change"):
+            summary = "same inputs; " + rec["change"]
+        else:
+            summary = "uses the Test inputs unchanged"
+        self.used_title.configure(text="{}  -  {}".format(rec["case"], summary),
+                                  foreground=c["warn"] if changed or rec.get("change")
+                                  else c["text"], wraplength=1100, justify="left")
+        for name in PARAM_ROWS:
+            is_changed = name in changed
+            self._used_values[name].configure(
+                text=str(values.get(name, "-")),
+                background=c["warn_bg"] if is_changed else c["bg"],
+                foreground=c["warn"] if is_changed else c["text"])
 
     def _write_details(self, text):
         self.details.configure(state="normal")
