@@ -80,6 +80,24 @@ class Bitstream(Protocol):
 
     def header_size_bits(self, n_lsb: int) -> int: ...
 
+    def capacity_check(self, cover_units: int, blob_size_bytes: int,
+                       bit_depth: int) -> dict:
+        """
+        Does a blob of `blob_size_bytes` fit in `cover_units` units at this
+        bit depth? Returns at least {"fits": bool, "required_units": int}.
+
+        This is the bitstream engine's arithmetic, not A2's, and it belongs
+        there: how many units a blob occupies is a property of how the engine
+        packs bits, so the engine is the only component that can answer it
+        without duplicating its own packing rules.
+
+        A2 still decides HOW MANY units are offered - that depends on the
+        keyed placement window reserving a tail (location.py), which is A2's
+        concern. The split is: A2 says how much room there is, the engine
+        says whether the blob fits in it.
+        """
+        ...
+
     def declared_total_bits(self, header: bytes) -> int:
         """Total bits (header + payload + signature) the header says follow."""
         ...

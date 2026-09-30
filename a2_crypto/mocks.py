@@ -119,6 +119,18 @@ class ReferenceBitstream:
     def header_size_bits(self, n_lsb: int = 1) -> int:
         return self.HEADER_SIZE * 8
 
+    def capacity_check(self, cover_units: int, blob_size_bytes: int,
+                       bit_depth: int) -> dict:
+        """Reference answer for the port's capacity question (see ports.py)."""
+        req = units_for_bits(blob_size_bytes * 8, bit_depth)
+        return {
+            "fits": req <= cover_units,
+            "capacity_units": cover_units,
+            "required_units": req,
+            "bit_depth": bit_depth,
+            "blob_size_bytes": blob_size_bytes,
+        }
+
     def _parse_header(self, header: bytes):
         if len(header) < self.HEADER_SIZE:
             raise HeaderError(

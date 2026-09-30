@@ -111,6 +111,18 @@ class A1BitstreamAdapter:
     def header_size_bits(self, n_lsb: int = 1) -> int:
         return self.HEADER_SIZE * 8
 
+    def capacity_check(self, cover_units: int, blob_size_bytes: int,
+                       bit_depth: int) -> dict:
+        """
+        The port's capacity question, answered by person 1's own
+        bitstream_engine.capacity_check() rather than re-derived here.
+
+        Their function already returned exactly this shape, so this is a
+        straight delegation - the engine owns the arithmetic for how many
+        units a blob occupies, which is the same arithmetic its packing uses.
+        """
+        return self._be.capacity_check(cover_units, blob_size_bytes, bit_depth)
+
     def _parse(self, header: bytes) -> dict:
         try:
             info = self._be.parse_header(header)

@@ -105,7 +105,8 @@ def estimate_stream_bits(message: str | bytes, algo: str = config.DEFAULT_SIGN_A
 def capacity_report(codec: Codec, view: CoverView, n_lsb: int,
                     message: str | bytes = b"",
                     algo: str = config.DEFAULT_SIGN_ALGO,
-                    encrypt: bool = True) -> dict:
+                    encrypt: bool = True,
+                    bits: Bitstream | None = None) -> dict:
     """
     The required cover-vs-payload capacity check, as a dict the GUI renders
     directly. `usable_bits` - not raw capacity - is the honest limit, because
@@ -114,12 +115,20 @@ def capacity_report(codec: Codec, view: CoverView, n_lsb: int,
     cap = codec.capacity_bits(view, n_lsb)
     needed = estimate_stream_bits(message, algo, encrypt)
     usable = max_payload_bits(cap, n_lsb)
+    # Pass `bits` and the live bar answers "does it fit?" with the same
+    # engine arithmetic the protect() gate uses, so the preview can never
+    # disagree with the block. Without it, fall back to the bit comparison
+    # (identical result: usable is always an exact multiple of n_lsb).
+    if bits is not None:
+        fits = bits.capacity_check(usable // n_lsb, -(-needed // 8), n_lsb)["fits"]
+    else:
+        fits = needed <= usable
     return {
         "capacity_bits": cap,
         "capacity_units": cap // n_lsb,
         "usable_bits": usable,
         "needed_bits": needed,
-        "fits": needed <= usable,
+        "fits": fits,
         "utilisation_percent": round(100.0 * needed / max(usable, 1), 3),
         "n_lsb": n_lsb,
         "algo": algo,
@@ -190,13 +199,20 @@ def protect(cover: CoverView, message: str | bytes, media_id: str, n_lsb: int,
           blob=signature)
 
     # -- capacity gate -------------------------------------------------------
+    # A2 decides how much room is on offer (max_payload_bits, which subtracts
+    # the placement window's reserved tail). The bitstream engine decides
+    # whether the packed blob fits in it, through the port's capacity_check -
+    # that arithmetic belongs to whoever packs the bits. See ports.py.
     stream = bits.pack(canon, signature, n_lsb, config.ALGO_IDS.get(algo, 0))
     needed_bits = len(stream) * 8
     usable_bits = max_payload_bits(capacity_bits, n_lsb)
-    if needed_bits > usable_bits:
+    fit = bits.capacity_check(usable_bits // n_lsb, len(stream), n_lsb)
+    if not fit["fits"]:
         t.fail("capacity", "Payload exceeds usable capacity",
                {"needed_bits": needed_bits, "usable_bits": usable_bits,
-                "capacity_bits": capacity_bits})
+                "capacity_bits": capacity_bits,
+                "required_units": fit["required_units"],
+                "usable_units": usable_bits // n_lsb})
         raise CapacityError(needed_bits, usable_bits, n_lsb)
 
     # -- 5. keyed start location --------------------------------------------

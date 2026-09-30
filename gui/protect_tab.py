@@ -171,8 +171,12 @@ class ProtectTab(ttk.Frame):
             self.cap_bar.set_message("n_lsb must be 1-8")
             return
         try:
+            # `bits` makes the live bar use the bitstream engine's own
+            # capacity_check, the same one protect()'s gate uses, so the bar
+            # and the block can never disagree.
             report = a2.capacity_report(self.cover.codec, self.cover.view, n_lsb,
-                                        self._message(), self.algo.get(), self.encrypt.get())
+                                        self._message(), self.algo.get(), self.encrypt.get(),
+                                        bits=self.session.bits)
         except Exception as exc:
             self.cap_bar.set_message(str(exc))
             return
