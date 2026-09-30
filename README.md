@@ -156,7 +156,7 @@ Generated at runtime, and git-ignored: `gui_out/`, `a2_out/`, `keys/impostor_*.p
   For WAV/PCM the payload only ever goes into the low byte of each sample
   (a flipped bit in a high byte is audible), but the hash covers *every* raw
   byte via the codec's `digest_samples()`. Hashing only the embeddable bytes
-  would leave the loud half of the audio unprotected — an attacker could
+  would leave the loud half of the audio unprotected. An attacker could
   rewrite every high byte and still get an `Authentic` verdict. That case is
   now a regression test in `tests/test_audio_codec.py`.
 - **Replay detection is per session.** Accepted nonces are kept in memory only,
@@ -168,7 +168,7 @@ Generated at runtime, and git-ignored: `gui_out/`, `a2_out/`, `keys/impostor_*.p
 
 ## Ethics and Responsible Use
 
-Steganography is a dual-use technology. While this tool is designed for legitimate security purposes—protecting media integrity, verifying authenticity, and ensuring confidentiality—the same techniques can be misused. Malicious actors frequently use steganography to bypass Data Loss Prevention (DLP) systems, secretly exfiltrate sensitive data, or hide malware payloads within seemingly innocuous files. 
+Steganography is a dual-use technology. While this tool is designed for legitimate security purposes, such as: protecting media integrity, verifying authenticity, and ensuring confidentiality, the same techniques can be misused. Malicious actors frequently use steganography to bypass Data Loss Prevention (DLP) systems, secretly exfiltrate sensitive data, or hide malware payloads within seemingly innocuous files. 
 
 We recognize these ethical implications. This application was built strictly for educational purposes and authorized verification workflows as part of the INF2005 coursework. It is intended to demonstrate cryptographic and steganographic principles responsibly and should not be used in environments where undocumented hidden data channels violate organizational security policies.
 
