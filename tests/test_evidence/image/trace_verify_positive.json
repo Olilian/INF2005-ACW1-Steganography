@@ -10,14 +10,14 @@
         "n_lsb": 2
       },
       "ok": true,
-      "ms": 16.712
+      "ms": 8.926
     },
     {
       "stage": "derive_secrets",
       "label": "HKDF re-derived location and message keys from passphrase",
       "detail": {},
       "ok": true,
-      "ms": 0.118
+      "ms": 0.087
     },
     {
       "stage": "derive_start",
@@ -28,7 +28,7 @@
         "n_lsb": 2
       },
       "ok": true,
-      "ms": 0.069
+      "ms": 0.035
     },
     {
       "stage": "magic_check",
@@ -38,7 +38,7 @@
         "got": "STG1"
       },
       "ok": true,
-      "ms": 0.074,
+      "ms": 0.045,
       "blob_len": 14,
       "blob_hex": "5354473101020000020e00000040",
       "blob_truncated": false
@@ -53,7 +53,7 @@
         "n_lsb": 2
       },
       "ok": true,
-      "ms": 0.018
+      "ms": 0.011
     },
     {
       "stage": "extract_body",
@@ -63,7 +63,7 @@
         "sig_bytes": 64
       },
       "ok": true,
-      "ms": 1.82,
+      "ms": 1.138,
       "blob_len": 96,
       "blob_hex": "7b22636f7665725f68617368223a2233373638336537646235623738623933383066356338323265613662666337326533353338326664333539346539343930393631353633376134313333376536222c22656e63223a226165732d3235362d",
       "blob_truncated": false
@@ -76,9 +76,9 @@
         "public_fingerprint": "96e408b3103196f0"
       },
       "ok": true,
-      "ms": 0.291,
+      "ms": 0.269,
       "blob_len": 32,
-      "blob_hex": "4ba622ecc5ea723786614fc87b255127adcf34e25a71b8d1bb6d44c4854fe2d5",
+      "blob_hex": "428786c8cb0520ed219f29144a5ade21b679164800bc8085aab11276013cb558",
       "blob_truncated": false
     },
     {
@@ -86,12 +86,12 @@
       "label": "Payload record parsed",
       "detail": {
         "media_id": "IMG-TEST-001",
-        "ts": "2026-09-18T08:18:52Z",
+        "ts": "2026-09-30T14:56:29Z",
         "enc": "aes-256-gcm",
         "n_lsb": 2
       },
       "ok": true,
-      "ms": 0.06
+      "ms": 0.039
     },
     {
       "stage": "compare_hash",
@@ -102,7 +102,7 @@
         "hashed_bits_per_byte": 6
       },
       "ok": true,
-      "ms": 1.36
+      "ms": 1.238
     },
     {
       "stage": "decrypt",
@@ -112,7 +112,7 @@
         "message_bytes": 105
       },
       "ok": true,
-      "ms": 0.106
+      "ms": 0.038
     },
     {
       "stage": "verdict",
@@ -122,8 +122,8 @@
         "algo": "ed25519"
       },
       "ok": true,
-      "ms": 0.003
+      "ms": 0.002
     }
   ],
-  "total_ms": 20.631
+  "total_ms": 11.828
 }

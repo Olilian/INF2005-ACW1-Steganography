@@ -11,7 +11,7 @@
         "usable_bits": 262144
       },
       "ok": true,
-      "ms": 0.057
+      "ms": 0.136
     },
     {
       "stage": "hash",
@@ -19,10 +19,12 @@
       "detail": {
         "algo": "sha256",
         "n_lsb": 2,
-        "bits_hashed_per_byte": 6
+        "bits_hashed_per_byte": 6,
+        "bytes_hashed": 405900,
+        "embeddable_units": 405900
       },
       "ok": true,
-      "ms": 1.827,
+      "ms": 1.27,
       "blob_len": 32,
       "blob_hex": "37683e7db5b78b9380f5c822ea6bfc72e35382fd3594e94909615637a41337e6",
       "blob_truncated": false
@@ -38,7 +40,7 @@
         ]
       },
       "ok": true,
-      "ms": 0.259
+      "ms": 0.145
     },
     {
       "stage": "payload",
@@ -46,13 +48,13 @@
       "detail": {
         "media_id": "IMG-TEST-001",
         "media_type": "image",
-        "ts": "2026-09-18T08:18:52Z",
-        "nonce": "1e08ec6a95ed4a2391a3296d",
+        "ts": "2026-09-30T14:56:29Z",
+        "nonce": "a75bb2023f48eb47c5cc0e0d",
         "enc": "aes-256-gcm",
         "message_bytes": 105
       },
       "ok": true,
-      "ms": 1.274
+      "ms": 0.79
     },
     {
       "stage": "canonical",
@@ -62,7 +64,7 @@
         "rule": "sort_keys, no whitespace, ASCII-escaped"
       },
       "ok": true,
-      "ms": 0.076,
+      "ms": 0.056,
       "blob_len": 526,
       "blob_hex": "7b22636f7665725f68617368223a2233373638336537646235623738623933383066356338323265613662666337326533353338326664333539346539343930393631353633376134313333376536222c22656e63223a226165732d3235362d67636d222c226d656469615f6964223a22494d472d544553542d303031222c22",
       "blob_truncated": true
@@ -75,9 +77,9 @@
         "sig_bytes": 64
       },
       "ok": true,
-      "ms": 0.387,
+      "ms": 0.372,
       "blob_len": 64,
-      "blob_hex": "4ba622ecc5ea723786614fc87b255127adcf34e25a71b8d1bb6d44c4854fe2d52bfced1aa6902e4b79acc9d698e041baf3ac78f87beacc3da67c63ee86974b08",
+      "blob_hex": "428786c8cb0520ed219f29144a5ade21b679164800bc8085aab11276013cb5586857f5dd80ba8dbfe15af104e794c133ea8080c88d1aeb68be393d2f5235a804",
       "blob_truncated": false
     },
     {
@@ -93,7 +95,7 @@
         "brute_force_positions": 274828
       },
       "ok": true,
-      "ms": 0.131
+      "ms": 0.174
     },
     {
       "stage": "pack",
@@ -103,7 +105,7 @@
         "header_bytes": 14
       },
       "ok": true,
-      "ms": 0.008,
+      "ms": 0.005,
       "blob_len": 64,
       "blob_hex": "5354473101020000020e000000407b22636f7665725f68617368223a223337363833653764623562373862393338306635633832326561366266633732653335",
       "blob_truncated": false
@@ -114,11 +116,11 @@
       "detail": {
         "start_unit": 253115,
         "units_written": 2416,
-        "bytes_changed": 1794,
-        "percent_of_cover": 0.442
+        "bytes_changed": 1832,
+        "percent_of_cover": 0.4513
       },
       "ok": true,
-      "ms": 20.788
+      "ms": 10.883
     },
     {
       "stage": "verify_invariant",
@@ -127,8 +129,8 @@
         "match": true
       },
       "ok": true,
-      "ms": 1.403
+      "ms": 1.198
     }
   ],
-  "total_ms": 26.212
+  "total_ms": 15.029
 }
