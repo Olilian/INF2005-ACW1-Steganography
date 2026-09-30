@@ -4,3 +4,6 @@ __pycache__/
 a2_out/
 gui_out/
 keys/impostor_*.pem
+# Algorithm-suffixed demo keys are generated on first use of that algorithm
+# (see gui/session.py). Only the canonical Ed25519 demo pair is submitted.
+keys/demo_*_rsa2048-pss.pem

@@ -110,6 +110,57 @@ the regenerated copies, run `git restore tests/test_evidence/`.
 
 ---
 
+## Keys
+
+| File | Purpose |
+|---|---|
+| `keys/demo_public.pem` | Ed25519 public key. Verifies every signature in the submitted evidence. Fingerprint `96e408b3103196f0` |
+| `keys/demo_private.pem` | Ed25519 private key. Signs payloads during Protect |
+| `keys/impostor_*.pem` | A second keypair used only to demonstrate the *Signature Invalid* case. Git-ignored and regenerated on demand |
+
+**Why a private key is in the repository.** The assignment permits demo-only
+private keys, and one is needed here: without it a marker cannot run Protect,
+so they could not reproduce the workflow. This keypair was generated solely
+for this assignment and is used nowhere else. In a real deployment the private
+key would never leave the signing machine — only the public key is
+distributed, because it can verify a signature but never create one.
+
+### Reproducing signature verification
+
+Verification needs the **public key only**. In the GUI: open **Verify**, load a
+stego file, click **Use demo public key for this algo**, enter the media ID,
+passphrase and LSB count, then **Verify**.
+
+To check a submitted evidence file without the GUI:
+
+```python
+import a2_crypto as a2
+from a2_integration import ImageCodecAdapter, A1BitstreamAdapter
+
+codec, bits = ImageCodecAdapter(), A1BitstreamAdapter()
+pub = a2.load_public("keys/demo_public.pem")
+
+v = a2.verify(codec.load("tests/test_evidence/image/image_stego.png"),
+              "IMG-TEST-001", 2, "team-P1-4-shared-passphrase", pub,
+              codec=codec, bits=bits)
+print(v.code, "|", v.message_text())
+```
+
+Expected output:
+
+```
+Authentic | Explain how steganography can be used to embed hidden verification data in image and audio cover objects.
+```
+
+The parameters come from `tests/test_image_codec.py`; the audio equivalent is
+in `tests/test_audio_codec.py` with media ID `AUD-TEST-001`.
+
+Selecting `rsa2048-pss` in the GUI generates a matching RSA demo keypair on
+first use, so that path is reproducible too — but the signatures in the
+submitted evidence are all Ed25519 and verify with `demo_public.pem`.
+
+---
+
 ## Project structure
 
 ```
@@ -127,7 +178,8 @@ docs/                   detailed module documentation
 a2_debug_gui.py         developer test bench for the crypto layer (not the submitted GUI)
 ```
 
-Generated at runtime, and git-ignored: `gui_out/`, `a2_out/`, `keys/impostor_*.pem`.
+Generated at runtime, and git-ignored: `gui_out/`, `a2_out/`, `keys/impostor_*.pem`,
+`keys/demo_*_rsa2048-pss.pem`.
 
 ---
 
