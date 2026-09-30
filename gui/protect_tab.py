@@ -364,3 +364,33 @@ class ProtectTab(ttk.Frame):
                               stats["changed_bytes"], stats["total_bytes"],
                               stats["percent_changed"], stats["max_byte_delta"])
                      ).pack(padx=6, pady=6, anchor="w")
+
+            # Zoomed-in diff, cropped to the embed region and auto-scaled to
+            # its OWN max (peak=None) instead of the full-file peak above.
+            # At low LSB depths the real delta is only a few units, which is
+            # invisible next to full-scale audio even amplified x32 - this
+            # is the same diff data, just windowed + independently scaled
+            # so it's actually visible on screen, not a different metric.
+            res = self.session.last_protect
+            if res is not None:
+                start = getattr(res, "start_unit", 0)
+                n_lsb_val = max(1, self.n_lsb.get())
+                approx_units = -(-res.needed_bits // n_lsb_val)  # ceiling division
+                pad = 100
+                lo = max(0, start - pad)
+                hi = min(len(diff_wave), start + approx_units + pad)
+                zoom_wave = diff_wave[lo:hi]
+
+                row4 = ttk.Frame(self.compare_frame)
+                row4.pack(fill="x", padx=6, pady=(4, 0))
+                ttk.Label(row4, text="Diff, zoomed to\nembed region:", width=16).pack(side="left")
+                wv4 = WaveformView(row4, color=theme.COLORS.get("warn", "red"))
+                wv4.pack(side="left", padx=4)
+                wv4.draw(zoom_wave, peak=None)  # auto-scales to this window's own max
+
+                ttk.Label(self.compare_frame,
+                         text="Same diff as above, cropped to samples {:,}-{:,} (the embed "
+                              "region) and scaled to its own range instead of the full "
+                              "audio's peak - this is where the {:,} bytes actually "
+                              "changed.".format(lo, hi, stats["changed_bytes"])
+                         ).pack(padx=6, pady=(0, 6), anchor="w")
